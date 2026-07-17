@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - target: bun-linux-x64
+            os: ubuntu-latest
+            artifact: slack-cli-linux-x64
+          - target: bun-darwin-arm64
+            os: macos-latest
+            artifact: slack-cli-mac-arm64
+          - target: bun-darwin-x64
+            os: macos-latest
+            artifact: slack-cli-mac-x64
+          - target: bun-windows-x64
+            os: ubuntu-latest
+            artifact: slack-cli-windows-x64.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install
+
+      - run: bun build --compile --minify --target=${{ matrix.target }} --outfile=${{ matrix.artifact }} index.ts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
