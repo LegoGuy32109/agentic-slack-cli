@@ -105,6 +105,7 @@ slack-cli api methods
 slack-cli api describe conversations.history
 slack-cli api users.info --params '{"user":"U123"}' --json
 slack-cli api conversations.history --params '{"channel":"C123","limit":100}' --json
+slack-cli api reactions.add --params '{"channel":"C123","timestamp":"1710000000.000001","name":"white_check_mark"}' --allow-write --yes
 ```
 
 The built-in catalog starts read-only. Methods outside it require `--unsafe-method`; mutations additionally require both `--allow-write` and `--yes`:

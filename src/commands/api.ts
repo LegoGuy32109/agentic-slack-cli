@@ -17,6 +17,7 @@ const methods: Record<string, MethodInfo> = {
   "conversations.mark": { write: true, description: "Mark a conversation read through a timestamp.", example: { channel: "C123", ts: "1710000000.000001" } },
   "chat.postMessage": { write: true, description: "Post a message to a conversation.", example: { channel: "C123", text: "Hello" } },
   "chat.delete": { write: true, description: "Delete a message authored by the authenticated user.", example: { channel: "C123", ts: "1710000000.000001" } },
+  "reactions.add": { write: true, description: "Add an emoji reaction to a message.", example: { channel: "C123", timestamp: "1710000000.000001", name: "white_check_mark" } },
 };
 
 export function apiMethods() {

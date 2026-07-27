@@ -40,4 +40,5 @@ describe("credential and message helpers", () => {
 test("direct API catalog describes guarded methods", () => {
   expect(apiMethods().some(method => method.method === "conversations.history" && method.mode === "read")).toBe(true);
   expect(apiDescribe("chat.postMessage")?.mode).toBe("write");
+  expect(apiDescribe("reactions.add")?.example).toEqual({ channel: "C123", timestamp: "1710000000.000001", name: "white_check_mark" });
 });
