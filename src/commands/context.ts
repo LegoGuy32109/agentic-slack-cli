@@ -28,10 +28,12 @@ export async function context(ids: string[], opts: { json: boolean; window: numb
     console.log(`\n=== #${r.channel} — ${r.id} ===`);
 
     console.log("\n-- surrounding --");
+    const matchTs = new Date(parseFloat(r.match.ts) * 1000).toLocaleString();
+    console.log(`> [${matchTs}] ${r.match.user}: ${r.match.text}`);
+    if (r.match.files) for (const f of r.match.files) console.log(`    [file: ${f.name} (${f.filetype}) ${f.permalink}]`);
     for (const m of r.surrounding) {
-      const marker = m.ts === r.match.ts ? ">" : " ";
       const ts = new Date(parseFloat(m.ts) * 1000).toLocaleString();
-      console.log(`${marker} [${ts}] ${m.user}: ${m.text}`);
+      console.log(`  [${ts}] ${m.user}: ${m.text}`);
       if (m.files) for (const f of m.files) console.log(`    [file: ${f.name} (${f.filetype}) ${f.permalink}]`);
     }
 

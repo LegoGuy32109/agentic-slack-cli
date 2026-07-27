@@ -1,4 +1,4 @@
-import { call, resolveUsers } from "./client.ts";
+import { call, mentionIds, paginate, renderMentions, resolveUsers } from "./client.ts";
 
 export type ExpandedFile = {
   name: string;
@@ -24,59 +24,47 @@ export type ExpandedContext = {
   surrounding: ExpandedMessage[];
 };
 
-// Fetch thread + surrounding channel messages for a single channelId:ts
+function chronological(messages: any[]): any[] {
+  return [...messages].sort((a, b) => Number(a.ts) - Number(b.ts));
+}
+
 export async function expandMessage(channelId: string, ts: string, window: number): Promise<ExpandedContext> {
   const tsFloat = parseFloat(ts);
-
-  // Surrounding channel history + thread in parallel
-  const [hist, repliesRes, infoRes] = await Promise.all([
-    call("conversations.history", {
-      channel: channelId,
-      oldest: String(tsFloat - window * 3600),  // window hours back
-      latest: String(tsFloat + window * 3600),  // window hours forward
-      limit: Math.min(window * 4 + 1, 200),
-      inclusive: true,
-    }),
-    call("conversations.replies", { channel: channelId, ts, limit: 100 }).catch(() => ({ messages: [] })),
+  const historyParams = {
+    channel: channelId,
+    oldest: String(tsFloat - window * 3600),
+    latest: String(tsFloat + window * 3600),
+    limit: 200,
+    inclusive: true,
+  };
+  const [history, replies, infoRes] = await Promise.all([
+    paginate("conversations.history", historyParams, "messages"),
+    paginate("conversations.replies", { channel: channelId, ts, limit: 200 }, "messages").catch(() => []),
     call("conversations.info", { channel: channelId }),
   ]);
-
-  const channelName: string = infoRes.channel?.name ?? channelId;
-  const allMsgs: any[] = hist.messages ?? [];
-  const threadMsgs: any[] = repliesRes.messages ?? [];
-
-  // Collect all user IDs for batch resolution
-  const allIds = [
-    ...allMsgs.map((m: any) => m.user),
-    ...threadMsgs.map((m: any) => m.user),
-  ];
-  const users = await resolveUsers(allIds);
-
-  const fmt = (m: any): ExpandedMessage => ({
-    ts: m.ts,
-    user: users[m.user] ?? m.user ?? "",
-    text: m.text ?? "",
-    ...(m.thread_ts && m.thread_ts !== m.ts ? { thread_ts: m.thread_ts } : {}),
-    ...(m.files?.length ? {
-      files: m.files.map((f: any) => ({
-        name: f.name,
-        filetype: f.filetype,
-        url_private: f.url_private,
-        permalink: f.permalink,
-      })),
-    } : {}),
+  const allMsgs = chronological(history);
+  const threadMsgs = chronological(replies);
+  const ids = [...allMsgs, ...threadMsgs].flatMap(message => [message.user, ...mentionIds(message.text || "")]);
+  const users = await resolveUsers(ids);
+  const fmt = (message: any): ExpandedMessage => ({
+    ts: message.ts,
+    user: users[message.user] ?? message.user ?? message.bot_id ?? "",
+    text: renderMentions(message.text ?? "", users),
+    ...(message.thread_ts && message.thread_ts !== message.ts ? { thread_ts: message.thread_ts } : {}),
+    ...(message.files?.length ? { files: message.files.map((file: any) => ({
+      name: file.name,
+      filetype: file.filetype,
+      url_private: file.url_private,
+      permalink: file.permalink,
+    })) } : {}),
   });
-
-  const match = fmt(allMsgs.find((m: any) => m.ts === ts) ?? { ts, user: "", text: "" });
-  const surrounding = allMsgs.filter((m: any) => m.ts !== ts).map(fmt);
-  const thread = threadMsgs.slice(1).map(fmt); // skip parent, already in surrounding/match
-
+  const rawMatch = allMsgs.find(message => message.ts === ts) || threadMsgs.find(message => message.ts === ts) || { ts, user: "", text: "" };
   return {
     id: `${channelId}:${ts}`,
-    channel: channelName,
+    channel: infoRes.channel?.name ?? infoRes.channel?.user ?? channelId,
     channel_id: channelId,
-    match,
-    thread,
-    surrounding,
+    match: fmt(rawMatch),
+    thread: threadMsgs.filter(message => message.ts !== rawMatch.ts && message.ts !== ts).map(fmt),
+    surrounding: allMsgs.filter(message => message.ts !== rawMatch.ts).map(fmt),
   };
 }

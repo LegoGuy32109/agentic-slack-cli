@@ -1,191 +1,142 @@
-import { call, resolveUsers } from "../client.ts";
+import { call, currentUserId, mentionIds, paginate, renderMentions, resolveUsers } from "../client.ts";
 
 type RawMessage = {
   ts: string;
   user?: string;
   bot_id?: string;
-  text: string;
+  text?: string;
   reply_count?: number;
   thread_ts?: string;
   subtype?: string;
-  attachments?: any[];
-  blocks?: any[];
+  files?: any[];
 };
 
 type ParsedMessage = {
   ts: string;
-  user: string;
+  userId: string;
   text: string;
   thread: boolean;
-  fields?: { title: string; value: string }[];
-  footer?: string;
+  files?: any[];
+  mentioned?: boolean;
 };
 
 type ChannelResult = {
   id: string;
   name: string;
+  peerId?: string;
   type: "channel" | "dm" | "group";
   messages: ParsedMessage[];
 };
 
-// Extract structured content from bot attachments/blocks when text is empty
-function extractAttachmentContent(msg: RawMessage): {
-  fields?: { title: string; value: string }[];
-  footer?: string;
-} | null {
-  if (!msg.attachments?.length) return null;
-
-  const fields: { title: string; value: string }[] = [];
-  let footer: string | undefined;
-
-  for (const att of msg.attachments) {
-    if (att.author_name) {
-      fields.unshift({ title: "from", value: att.author_name });
+async function mapConcurrent<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const output: R[] = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      output[index] = await fn(items[index]!);
     }
-    if (att.pretext) fields.push({ title: "", value: att.pretext });
-    if (att.text) fields.push({ title: "", value: att.text });
-    for (const f of att.fields ?? []) {
-      if (f.value) fields.push({ title: f.title ?? "", value: f.value });
-    }
-    if (att.footer) footer = att.footer;
-  }
-
-  return fields.length || footer ? { fields, footer } : null;
+  }));
+  return output;
 }
 
-export async function unread(opts: { json: boolean; threads: boolean; all: boolean }) {
-  // 1. Get unread convos + muted channel list in parallel
-  const [counts, prefs] = await Promise.all([
+function isMention(message: RawMessage, userId: string): boolean {
+  const text = message.text || "";
+  return text.includes(`<@${userId}>`) || text.includes("<!here>") || text.includes("<!channel>");
+}
+
+function files(message: RawMessage) {
+  return message.files?.map(file => ({
+    name: file.name,
+    filetype: file.filetype,
+    url_private: file.url_private,
+    permalink: file.permalink,
+  }));
+}
+
+export async function unread(opts: { json: boolean; threads: boolean; all: boolean; files: boolean; mentions: boolean }) {
+  const [counts, prefs, mentionedUser] = await Promise.all([
     call("client.counts"),
     call("users.prefs.get"),
+    opts.mentions ? currentUserId() : Promise.resolve(""),
   ]);
-
-  const notifPrefs: Record<string, { muted: boolean }> =
-    JSON.parse(prefs.prefs?.all_notifications_prefs ?? "{}").channels ?? {};
-
+  const notifPrefs: Record<string, { muted: boolean }> = JSON.parse(prefs.prefs?.all_notifications_prefs ?? "{}").channels ?? {};
   const allConvos = [
-    ...(counts.channels || []).map((c: any) => ({ ...c, type: "channel" })),
-    ...(counts.mpims || []).map((c: any) => ({ ...c, type: "group" })),
-    ...(counts.ims || []).map((c: any) => ({ ...c, type: "dm" })),
-  ]
-    .filter((c: any) => c.has_unreads || c.mention_count > 0)
-    .filter((c: any) => opts.all || !notifPrefs[c.id]?.muted);
+    ...(counts.channels || []).map((convo: any) => ({ ...convo, type: "channel" as const })),
+    ...(counts.mpims || []).map((convo: any) => ({ ...convo, type: "group" as const })),
+    ...(counts.ims || []).map((convo: any) => ({ ...convo, type: "dm" as const })),
+  ].filter((convo: any) => (convo.has_unreads || convo.mention_count > 0) && (opts.all || !notifPrefs[convo.id]?.muted));
 
-  if (!allConvos.length) {
-    if (opts.json) console.log(JSON.stringify({ unread: [] }));
-    else console.log("All caught up — no unread messages.");
+  const processed = await mapConcurrent(allConvos, 4, async (convo: any): Promise<ChannelResult | undefined> => {
+    const [info, history] = await Promise.all([
+      call("conversations.info", { channel: convo.id }).catch(() => ({ channel: {} })),
+      paginate("conversations.history", { channel: convo.id, oldest: convo.last_read, inclusive: false, limit: 200 }, "messages"),
+    ]);
+    const messages = history.filter((message: RawMessage) => !message.subtype || message.subtype === "bot_message");
+    if (!messages.length) return undefined;
+    const parents = messages.filter((message: RawMessage) => message.reply_count && message.reply_count > 0);
+    const replies = opts.threads
+      ? await mapConcurrent(parents, 4, parent => paginate("conversations.replies", { channel: convo.id, ts: parent.ts, limit: 200 }, "messages").catch(() => []))
+      : [];
+    const groups = messages.map((message: RawMessage) => {
+      const index = parents.indexOf(message);
+      const thread = index >= 0 ? replies[index] : undefined;
+      return thread?.length ? thread : [message];
+    });
+    const selected = opts.mentions
+      ? groups.filter(group => group.some((message: RawMessage) => isMention(message, mentionedUser)))
+      : groups;
+    const raw = selected.flat().sort((a: RawMessage, b: RawMessage) => Number(a.ts) - Number(b.ts));
+    if (!raw.length) return undefined;
+    const parsed = raw.map((message: RawMessage): ParsedMessage => ({
+      ts: message.ts,
+      userId: message.user || message.bot_id || "",
+      text: message.text || "",
+      thread: !!(message.thread_ts && message.thread_ts !== message.ts),
+      ...(opts.files && files(message)?.length ? { files: files(message) } : {}),
+      ...(opts.mentions && isMention(message, mentionedUser) ? { mentioned: true } : {}),
+    }));
+    return {
+      id: convo.id,
+      name: info.channel?.name || convo.id,
+      peerId: info.channel?.is_im ? info.channel.user : undefined,
+      type: convo.type,
+      messages: parsed,
+    };
+  });
+  const results = processed.filter((result): result is ChannelResult => !!result);
+  const userIds = results.flatMap(result => [result.peerId || "", ...result.messages.flatMap(message => [message.userId, ...mentionIds(message.text)])]);
+  const users = await resolveUsers(userIds);
+  for (const result of results) {
+    if (result.peerId) result.name = users[result.peerId] || result.name;
+    for (const message of result.messages) message.text = renderMentions(message.text, users);
+  }
+  results.sort((a, b) => a.name.localeCompare(b.name));
+  if (opts.json) {
+    console.log(JSON.stringify(results.map(result => ({
+      channel: result.name,
+      id: result.id,
+      type: result.type,
+      messages: result.messages.map(message => ({
+        ts: message.ts,
+        user: users[message.userId] || message.userId,
+        text: message.text,
+        ...(message.thread ? { thread: true } : {}),
+        ...(message.files ? { files: message.files } : {}),
+        ...(message.mentioned ? { mentioned: true } : {}),
+      })),
+    })), null, 2));
     return;
   }
-
-  // 2. Fetch info + history for each in parallel
-  const results: ChannelResult[] = [];
-
-  await Promise.all(allConvos.map(async (convo: any) => {
-    // Get channel name
-    let name = convo.id;
-    try {
-      const info = await call("conversations.info", { channel: convo.id });
-      const ch = info.channel;
-      if (ch.is_im) {
-        const u = await call("users.info", { user: ch.user });
-        name = u.user.profile.display_name || u.user.real_name || u.user.name;
-      } else {
-        name = ch.name;
-      }
-    } catch { /* keep id as name */ }
-
-    // Fetch messages since last_read
-    const hist = await call("conversations.history", {
-      channel: convo.id,
-      oldest: convo.last_read,
-      inclusive: false,
-      limit: 200,
-    });
-
-    const messages: RawMessage[] = ((hist.messages || []) as RawMessage[])
-      .filter(m => !m.subtype || m.subtype === "bot_message")
-      .reverse();
-
-    if (!messages.length) return;
-
-    // Fetch thread replies if requested
-    let allRaw: RawMessage[] = messages;
-    if (opts.threads) {
-      const parents = messages.filter(m => m.reply_count && m.reply_count > 0);
-      const threadReplies = await Promise.all(parents.map(async (m) => {
-        const r = await call("conversations.replies", {
-          channel: convo.id,
-          ts: m.ts,
-          oldest: convo.last_read,
-          inclusive: false,
-          limit: 100,
-        });
-        return ((r.messages || []) as RawMessage[]).slice(1).reverse();
-      }));
-      allRaw = messages.flatMap(m => {
-        const idx = parents.indexOf(m);
-        return idx >= 0 ? [m, ...(threadReplies[idx] ?? [])] : [m];
-      });
-    }
-
-    const parsed: ParsedMessage[] = allRaw.map(m => {
-      const isThread = !!(m.thread_ts && m.thread_ts !== m.ts);
-      const base: ParsedMessage = {
-        ts: m.ts,
-        user: m.user || m.bot_id || "",
-        text: m.text || "",
-        thread: isThread,
-      };
-      // Only extract attachment content for thread replies with empty text
-      if (opts.threads && isThread && !m.text) {
-        const extracted = extractAttachmentContent(m);
-        if (extracted?.fields?.length) base.fields = extracted.fields;
-        if (extracted?.footer) base.footer = extracted.footer;
-      }
-      return base;
-    });
-
-    results.push({ id: convo.id, name, type: convo.type, messages: parsed });
-  }));
-
-  results.sort((a, b) => a.name.localeCompare(b.name));
-
-  // 3. Resolve all user IDs at once
-  const allUserIds = results.flatMap(r => r.messages.map(m => m.user));
-  const users = await resolveUsers(allUserIds);
-
-  if (opts.json) {
-    const out = results.map(r => ({
-      channel: r.name,
-      id: r.id,
-      type: r.type,
-      messages: r.messages.map(m => ({
-        ts: m.ts,
-        user: users[m.user] ?? m.user,
-        text: m.text,
-        ...(m.thread ? { thread: true } : {}),
-        ...(m.fields ? { fields: m.fields } : {}),
-        ...(m.footer ? { footer: m.footer } : {}),
-      })),
-    }));
-    console.log(JSON.stringify(out, null, 2));
-  } else {
-    for (const r of results) {
-      const prefix = r.type === "dm" ? "@" : r.type === "group" ? "⊕" : "#";
-      console.log(`\n${prefix}${r.name} (${r.messages.length} unread)`);
-      for (const m of r.messages) {
-        const name = users[m.user] ?? m.user;
-        const ts = new Date(parseFloat(m.ts) * 1000).toLocaleTimeString();
-        const indent = m.thread ? "    ↳ " : "  ";
-        console.log(`${indent}[${ts}] ${name}: ${m.text}`);
-        if (m.fields) {
-          for (const f of m.fields) {
-            const label = f.title ? `${f.title}: ` : "";
-            console.log(`         ${label}${f.value}`);
-          }
-        }
-        if (m.footer) console.log(`         ${m.footer}`);
-      }
+  if (!results.length) return console.log(opts.mentions ? "No unread mentions." : "All caught up — no unread messages.");
+  for (const result of results) {
+    const prefix = result.type === "dm" ? "@" : result.type === "group" ? "⊕" : "#";
+    console.log(`\n${prefix}${result.name} (${result.messages.length} unread)`);
+    for (const message of result.messages) {
+      const timestamp = new Date(parseFloat(message.ts) * 1000).toLocaleTimeString();
+      const marker = message.mentioned ? "@" : message.thread ? "    ↳" : "  ";
+      console.log(`${marker} [${timestamp}] ${users[message.userId] || message.userId}: ${message.text}`);
+      for (const file of message.files || []) console.log(`      [file: ${file.name} (${file.filetype}) ${file.permalink}]`);
     }
   }
 }

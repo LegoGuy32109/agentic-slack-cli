@@ -1,49 +1,89 @@
-const WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL ?? "https://gogeoh.slack.com";
+import { loadCredentials } from "./config.ts";
+import { refreshUserCache, resolveCachedUsers } from "./user-cache.ts";
 
-const xoxc = process.env.SLACK_XOXC_TOKEN;
-const xoxd = process.env.SLACK_XOXD_TOKEN;
+export type ApiParams = Record<string, unknown>;
 
-if ((!xoxc || !xoxd) && process.argv[2] !== "auth") {
-  console.error("Error: SLACK_XOXC_TOKEN and SLACK_XOXD_TOKEN must be set.\nRun: slack auth <paste curl command>");
-  process.exit(1);
+let credentialsPromise: ReturnType<typeof loadCredentials> | undefined;
+let currentUserPromise: Promise<string> | undefined;
+
+async function credentials() {
+  credentialsPromise ??= loadCredentials();
+  return credentialsPromise;
 }
 
-export async function call(method: string, params: Record<string, string | number | boolean> = {}): Promise<any> {
-  const body = new URLSearchParams({
-    token: xoxc, ...Object.fromEntries(
-      Object.entries(params).map(([k, v]) => [k, String(v)])
-    )
-  } as Record<string, string>);
-
-  if (!xoxd) throw new Error('No -xoxd token present')
-
-  const res = await fetch(`${WORKSPACE_URL}/api/${method}`, {
-    method: "POST",
-    headers: {
-      "Cookie": `d=${encodeURIComponent(xoxd)}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Origin": "https://app.slack.com",
-      "User-Agent": "Mozilla/5.0 (compatible)",
-    },
-    body,
-  });
-
-  const data = await res.json() as any;
-  if (!data.ok) throw new Error(`${method} failed: ${data.error}`);
-  return data;
-}
-
-// Resolve a batch of user IDs to display names
-export async function resolveUsers(ids: string[]): Promise<Record<string, string>> {
-  const unique = [...new Set(ids.filter(Boolean))];
-  const map: Record<string, string> = {};
-  await Promise.all(unique.map(async (id) => {
-    try {
-      const d = await call("users.info", { user: id });
-      map[id] = d.user.profile.display_name || d.user.real_name || d.user.name;
-    } catch {
-      map[id] = id;
+export async function call(method: string, params: ApiParams = {}): Promise<any> {
+  const { credentials: auth } = await credentials();
+  const body = new URLSearchParams({ token: auth.xoxc });
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) body.set(key, typeof value === "string" ? value : String(value));
+  }
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch(`${auth.workspaceUrl}/api/${method}`, {
+      method: "POST",
+      headers: {
+        "Cookie": `d=${encodeURIComponent(auth.xoxd)}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Origin": "https://app.slack.com",
+        "User-Agent": "Mozilla/5.0 (compatible)",
+      },
+      body,
+    });
+    const data = await res.json() as any;
+    if (data.ok) return data;
+    if ((res.status === 429 || data.error === "ratelimited") && attempt < 2) {
+      const seconds = Number(res.headers.get("retry-after") || "1");
+      await Bun.sleep(Math.max(1, seconds) * 1000);
+      continue;
     }
-  }));
-  return map;
+    throw new Error(`${method} failed: ${data.error}`);
+  }
+  throw new Error(`${method} failed after retries`);
+}
+
+export async function paginate(method: string, params: ApiParams, key: string, maxPages = 20): Promise<any[]> {
+  const all: any[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < maxPages; page++) {
+    const result = await call(method, { ...params, ...(cursor ? { cursor } : {}) });
+    all.push(...(result[key] || []));
+    cursor = result.response_metadata?.next_cursor || undefined;
+    if (!cursor) break;
+  }
+  return all;
+}
+
+function userName(user: any): string | undefined {
+  return user?.profile?.display_name || user?.profile?.real_name || user?.real_name || user?.name;
+}
+
+export async function resolveUsers(ids: string[]): Promise<Record<string, string>> {
+  const { credentials: auth } = await credentials();
+  return resolveCachedUsers(auth.workspaceUrl, ids, async id => userName((await call("users.info", { user: id })).user));
+}
+
+export async function refreshUsers(): Promise<number> {
+  const { credentials: auth } = await credentials();
+  return refreshUserCache(auth.workspaceUrl, async cursor => {
+    const result = await call("users.list", { limit: 200, ...(cursor ? { cursor } : {}) });
+    // Browser-auth Slack currently returns `members`; the public API uses `users`.
+    return { users: result.users || result.members || [], response_metadata: result.response_metadata };
+  });
+}
+
+export async function currentUserId(): Promise<string> {
+  currentUserPromise ??= call("auth.test").then(result => result.user_id as string);
+  return currentUserPromise;
+}
+
+export async function credentialStatus() {
+  const selected = await credentials();
+  return { profile: selected.profile, source: selected.source, workspaceUrl: selected.credentials.workspaceUrl };
+}
+
+export function renderMentions(text: string, users: Record<string, string>): string {
+  return text.replace(/<@([A-Z0-9]+)(?:\|[^>]+)?>/g, (_, id) => `@${users[id] || id}`);
+}
+
+export function mentionIds(text: string): string[] {
+  return [...text.matchAll(/<@([A-Z0-9]+)(?:\|[^>]+)?>/g)].map(match => match[1]).filter((id): id is string => !!id);
 }
