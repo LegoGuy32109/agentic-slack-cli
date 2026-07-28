@@ -50,7 +50,12 @@ uses that field in normal output.
 # Read the latest message sequence in chronological order.
 bun run index.ts history D0A480TTP5Z --top=3 --content --json
 
-# Only after explicit direction, send one approved response.
+# Only after Josh gives a separate, direct instruction to send this exact
+# response, send one message. Researching, drafting, asking to go through the
+# standup flow, or generally asking the agent to "post" standup answers does
+# not authorize a write. Present the proposed text first and wait for Josh to
+# approve it and direct the send; do not infer approval from the surrounding
+# conversation.
 bun run index.ts send D0A480TTP5Z 'approved one-paragraph response' --allow-write --yes
 
 # Poll for the bot's next question.
@@ -60,4 +65,5 @@ bun run index.ts history D0A480TTP5Z --top=3 --content --json
 The recurring prompts are normally: what was done yesterday, what is planned
 today, and whether there are blockers. Read the returned `content` before
 choosing a response; do not assume the question or send multiple answers at
-once.
+once. Before every send, confirm both the target channel and the exact message
+with Josh in the current conversation.
