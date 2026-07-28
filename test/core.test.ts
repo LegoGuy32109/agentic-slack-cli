@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { apiDescribe, apiMethods } from "../src/commands/api.ts";
 import { decodeXoxd } from "../src/config.ts";
 import { mentionIds, renderMentions } from "../src/client.ts";
-import { resolveCachedUsers } from "../src/user-cache.ts";
+import { resolveCachedIdentity, resolveCachedUsers } from "../src/user-cache.ts";
+import { normalizeMessage } from "../src/message.ts";
+import { updateInternals } from "../src/commands/update.ts";
 
 const originalCache = process.env.XDG_CACHE_HOME;
 const temporaryDirs: string[] = [];
@@ -35,10 +37,35 @@ describe("credential and message helpers", () => {
     expect(await resolveCachedUsers("https://example.slack.com", ["U1"], lookup)).toEqual({ U1: "Ada" });
     expect(lookups).toBe(1);
   });
+
+  test("normalizes attachment-backed prompts without duplicating rich text", () => {
+    expect(normalizeMessage({
+      ts: "1", user: "U1", text: "Hello world",
+      blocks: [{ elements: [{ type: "rich_text_section", elements: [{ type: "text", text: "Hello world" }] }] }],
+      attachments: [{ fallback: "What plan do today?", fields: [{ title: "What plan do today?", value: "" }] }],
+    })).toMatchObject({ text: "Hello world", content: "Hello world\nWhat plan do today?" });
+  });
+
+  test("caches authenticated identity timezone", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "slack-cli-test-"));
+    temporaryDirs.push(dir);
+    process.env.XDG_CACHE_HOME = dir;
+    let lookups = 0;
+    const lookup = async () => { lookups++; return { username: "ada", timezone: "America/Indiana/Indianapolis" }; };
+    expect((await resolveCachedIdentity("https://example.slack.com", "U1", lookup))?.timezone).toBe("America/Indiana/Indianapolis");
+    expect((await resolveCachedIdentity("https://example.slack.com", "U1", lookup))?.username).toBe("ada");
+    expect(lookups).toBe(1);
+  });
 });
 
 test("direct API catalog describes guarded methods", () => {
   expect(apiMethods().some(method => method.method === "conversations.history" && method.mode === "read")).toBe(true);
   expect(apiDescribe("chat.postMessage")?.mode).toBe("write");
   expect(apiDescribe("reactions.add")?.example).toEqual({ channel: "C123", timestamp: "1710000000.000001", name: "white_check_mark" });
+});
+
+test("update helpers compare versions and parse checksums", () => {
+  expect(updateInternals.compareVersions("v0.3.1", "0.3.0")).toBe(1);
+  expect(updateInternals.compareVersions("v0.3.0", "0.3.0")).toBe(0);
+  expect(updateInternals.expectedChecksum(`${"a".repeat(64)}  slack-cli-linux-x64\n`, "slack-cli-linux-x64")).toBe("a".repeat(64));
 });

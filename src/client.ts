@@ -1,10 +1,11 @@
 import { loadCredentials } from "./config.ts";
-import { refreshUserCache, resolveCachedUsers } from "./user-cache.ts";
+import { refreshUserCache, resolveCachedIdentity, resolveCachedUsers } from "./user-cache.ts";
 
 export type ApiParams = Record<string, unknown>;
 
 let credentialsPromise: ReturnType<typeof loadCredentials> | undefined;
 let currentUserPromise: Promise<string> | undefined;
+let currentIdentityPromise: Promise<{ id: string; username?: string; displayName?: string; timezone?: string }> | undefined;
 
 async function credentials() {
   credentialsPromise ??= loadCredentials();
@@ -75,9 +76,28 @@ export async function currentUserId(): Promise<string> {
   return currentUserPromise;
 }
 
+export async function currentUserIdentity() {
+  currentIdentityPromise ??= (async () => {
+    const { credentials: auth } = await credentials();
+    const id = await currentUserId();
+    const identity = await resolveCachedIdentity(auth.workspaceUrl, id, async () => {
+      const user = (await call("users.info", { user: id })).user;
+      if (!user) return undefined;
+      return {
+        username: user.name,
+        displayName: userName(user),
+        timezone: user.tz,
+      };
+    });
+    return { id, username: identity?.username, displayName: identity?.displayName, timezone: identity?.timezone };
+  })();
+  return currentIdentityPromise;
+}
+
 export async function credentialStatus() {
   const selected = await credentials();
-  return { profile: selected.profile, source: selected.source, workspaceUrl: selected.credentials.workspaceUrl };
+  const identity = await currentUserIdentity();
+  return { profile: selected.profile, source: selected.source, workspaceUrl: selected.credentials.workspaceUrl, ...identity };
 }
 
 export function renderMentions(text: string, users: Record<string, string>): string {

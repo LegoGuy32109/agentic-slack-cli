@@ -1,6 +1,6 @@
 import { expandMessage } from "../expand.ts";
 
-export async function context(ids: string[], opts: { json: boolean; window: number }) {
+export async function context(ids: string[], opts: { json: boolean; window: number; content?: boolean }) {
   if (!ids.length) {
     console.error("Usage: slack context <channelId:ts> [<channelId:ts> ...] [--window=Nh]");
     process.exit(1);
@@ -29,11 +29,11 @@ export async function context(ids: string[], opts: { json: boolean; window: numb
 
     console.log("\n-- surrounding --");
     const matchTs = new Date(parseFloat(r.match.ts) * 1000).toLocaleString();
-    console.log(`> [${matchTs}] ${r.match.user}: ${r.match.text}`);
+    console.log(`> [${matchTs}] ${r.match.user}: ${opts.content ? r.match.content : r.match.text}`);
     if (r.match.files) for (const f of r.match.files) console.log(`    [file: ${f.name} (${f.filetype}) ${f.permalink}]`);
     for (const m of r.surrounding) {
       const ts = new Date(parseFloat(m.ts) * 1000).toLocaleString();
-      console.log(`  [${ts}] ${m.user}: ${m.text}`);
+      console.log(`  [${ts}] ${m.user}: ${opts.content ? m.content : m.text}`);
       if (m.files) for (const f of m.files) console.log(`    [file: ${f.name} (${f.filetype}) ${f.permalink}]`);
     }
 
@@ -41,7 +41,7 @@ export async function context(ids: string[], opts: { json: boolean; window: numb
       console.log("\n-- thread --");
       for (const m of r.thread) {
         const ts = new Date(parseFloat(m.ts) * 1000).toLocaleString();
-        console.log(`  ↳ [${ts}] ${m.user}: ${m.text}`);
+        console.log(`  ↳ [${ts}] ${m.user}: ${opts.content ? m.content : m.text}`);
         if (m.files) for (const f of m.files) console.log(`      [file: ${f.name} (${f.filetype}) ${f.permalink}]`);
       }
     }

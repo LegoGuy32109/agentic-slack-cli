@@ -2,11 +2,19 @@ import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path";
 import { cacheDir } from "./config.ts";
 
+type Identity = {
+  username?: string;
+  displayName?: string;
+  timezone?: string;
+  fetchedAt: string;
+};
+
 type UserCache = {
-  version: 1;
+  version: 2;
   workspace: string;
   updatedAt: string;
   users: Record<string, string>;
+  identities: Record<string, Identity>;
 };
 
 function workspaceKey(workspaceUrl: string): string {
@@ -20,9 +28,12 @@ function pathFor(workspaceUrl: string): string {
 async function load(workspaceUrl: string): Promise<UserCache> {
   try {
     const parsed = JSON.parse(await readFile(pathFor(workspaceUrl), "utf8"));
-    if (parsed?.version === 1 && parsed?.users) return parsed;
+    if (parsed?.version === 2 && parsed?.users && parsed?.identities) return parsed;
+    if (parsed?.version === 1 && parsed?.users) {
+      return { version: 2, workspace: parsed.workspace || workspaceUrl, updatedAt: parsed.updatedAt || "", users: parsed.users, identities: {} };
+    }
   } catch { /* Cache miss. */ }
-  return { version: 1, workspace: workspaceUrl, updatedAt: "", users: {} };
+  return { version: 2, workspace: workspaceUrl, updatedAt: "", users: {}, identities: {} };
 }
 
 async function save(workspaceUrl: string, cache: UserCache): Promise<void> {
@@ -78,6 +89,26 @@ export async function refreshUserCache(
     }
     cursor = page.response_metadata?.next_cursor || undefined;
   } while (cursor);
-  await save(workspaceUrl, { version: 1, workspace: workspaceUrl, updatedAt: new Date().toISOString(), users });
+  const existing = await load(workspaceUrl);
+  await save(workspaceUrl, { ...existing, version: 2, workspace: workspaceUrl, updatedAt: new Date().toISOString(), users });
   return Object.keys(users).length;
+}
+
+export async function resolveCachedIdentity(
+  workspaceUrl: string,
+  userId: string,
+  lookup: () => Promise<Omit<Identity, "fetchedAt"> | undefined>,
+  maxAgeMs = 7 * 24 * 60 * 60 * 1000,
+): Promise<Identity | undefined> {
+  const cache = await load(workspaceUrl);
+  const existing = cache.identities[userId];
+  if (existing && Date.now() - Date.parse(existing.fetchedAt) < maxAgeMs) return existing;
+  const fresh = await lookup().catch(() => undefined);
+  if (!fresh) return existing;
+  const identity = { ...fresh, fetchedAt: new Date().toISOString() };
+  cache.identities[userId] = identity;
+  if (identity.displayName) cache.users[userId] = identity.displayName;
+  cache.updatedAt = identity.fetchedAt;
+  await save(workspaceUrl, cache);
+  return identity;
 }

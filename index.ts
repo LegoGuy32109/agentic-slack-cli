@@ -1,8 +1,12 @@
 import { api, apiDescribe, apiMethods } from "./src/commands/api.ts";
 import { auth } from "./src/commands/auth.ts";
 import { context } from "./src/commands/context.ts";
+import { history } from "./src/commands/history.ts";
 import { mark } from "./src/commands/mark.ts";
 import { search } from "./src/commands/search.ts";
+import { send } from "./src/commands/send.ts";
+import { update } from "./src/commands/update.ts";
+import { VERSION } from "./src/version.ts";
 import { unread } from "./src/commands/unread.ts";
 import { credentialStatus, currentUserId, refreshUsers } from "./src/client.ts";
 import { credentialsPath, removeCredentials } from "./src/config.ts";
@@ -31,9 +35,14 @@ function date(name: string): string | undefined {
   return raw;
 }
 const profile = value("profile");
+const topRaw = value("top");
+const afterTs = value("after-ts");
 const opts = {
   json: flag("json"), threads: flag("threads"), files: flag("files"), mentions: flag("mentions"), all: flag("all"),
   count: number("count", 20), window: number("window", -1), after: date("after"), before: date("before"),
+  top: topRaw === undefined ? undefined : Number(topRaw), afterTs, content: flag("content"),
+  allowWrite: flag("allow-write"), yes: flag("yes"),
+  force: flag("force"), check: flag("check"),
 };
 const positional = rest.filter((arg, index) => !arg.startsWith("--") && !consumed.has(index));
 
@@ -57,14 +66,19 @@ Commands:
   unread                            Show unread messages
   search <query>                    Search messages with context
   context <channelId:ts> ...        Fetch full context
+  history <channelId>               Read recent normalized conversation messages
+  send <channelId> <text>           Post a message (requires --allow-write --yes)
+  update [--check]                  Check for or install a verified binary update
   mark <channel> <ts>               Mark a channel as read
   api methods|describe|<method>     Guarded direct Slack API access
 
-Flags: --json --threads --files --mentions --all --count=N --window=N
-       --after=YYYY-MM-DD --before=YYYY-MM-DD --profile=NAME --refresh-users`);
+Flags: --json --content --threads --files --mentions --all --count=N --window=N
+       --after=YYYY-MM-DD --before=YYYY-MM-DD --top=N --after-ts=TS
+       --profile=NAME --refresh-users --allow-write --yes --force`);
 }
 
 async function main() {
+  if (command === "--version" || command === "version") return console.log(VERSION);
   if (command === "auth" && positional[0] === "status") {
     const status = await credentialStatus();
     const test = await currentUserId();
@@ -83,8 +97,11 @@ async function main() {
   if (flag("refresh-users")) console.log(`Refreshed ${await refreshUsers()} users.`);
   if (command === "unread") return unread(opts);
   if (command === "mark") return mark(positional[0] || "", positional[1] || "");
-  if (command === "search") return search(positional.join(" "), { ...opts, window: opts.window < 0 ? 1 : opts.window });
+  if (command === "search") return search(positional.join(" "), { ...opts, window: opts.window < 0 ? 0 : opts.window });
   if (command === "context") return context(positional, { ...opts, window: opts.window < 0 ? 4 : opts.window });
+  if (command === "history") return history(positional[0] || "", { json: opts.json, top: opts.top, afterTs: opts.afterTs, content: opts.content });
+  if (command === "send") return send(positional[0] || "", positional.slice(1).join(" "), opts);
+  if (command === "update") return update({ check: opts.check, force: opts.force });
   if (command === "api") {
     const method = positional[0];
     if (method === "methods") return console.log(JSON.stringify(apiMethods(), null, 2));

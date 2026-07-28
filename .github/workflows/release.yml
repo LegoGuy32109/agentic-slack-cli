@@ -52,6 +52,9 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - name: Publish checksums
+        run: cd artifacts && sha256sum slack-cli-* > SHA256SUMS
+
       - uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*

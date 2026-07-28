@@ -1,4 +1,5 @@
 import { call, currentUserId, mentionIds, paginate, renderMentions, resolveUsers } from "../client.ts";
+import { normalizeMessage, type VisibleAttachment } from "../message.ts";
 
 type RawMessage = {
   ts: string;
@@ -15,9 +16,11 @@ type ParsedMessage = {
   ts: string;
   userId: string;
   text: string;
+  content: string;
   thread: boolean;
   files?: any[];
   mentioned?: boolean;
+  attachments?: VisibleAttachment[];
 };
 
 type ChannelResult = {
@@ -54,7 +57,7 @@ function files(message: RawMessage) {
   }));
 }
 
-export async function unread(opts: { json: boolean; threads: boolean; all: boolean; files: boolean; mentions: boolean }) {
+export async function unread(opts: { json: boolean; threads: boolean; all: boolean; files: boolean; mentions: boolean; content?: boolean }) {
   const [counts, prefs, mentionedUser] = await Promise.all([
     call("client.counts"),
     call("users.prefs.get"),
@@ -91,10 +94,12 @@ export async function unread(opts: { json: boolean; threads: boolean; all: boole
     const parsed = raw.map((message: RawMessage): ParsedMessage => ({
       ts: message.ts,
       userId: message.user || message.bot_id || "",
-      text: message.text || "",
+      text: normalizeMessage(message).text,
+      content: normalizeMessage(message).content,
       thread: !!(message.thread_ts && message.thread_ts !== message.ts),
       ...(opts.files && files(message)?.length ? { files: files(message) } : {}),
       ...(opts.mentions && isMention(message, mentionedUser) ? { mentioned: true } : {}),
+      ...(normalizeMessage(message).attachments ? { attachments: normalizeMessage(message).attachments } : {}),
     }));
     return {
       id: convo.id,
@@ -105,11 +110,12 @@ export async function unread(opts: { json: boolean; threads: boolean; all: boole
     };
   });
   const results = processed.filter((result): result is ChannelResult => !!result);
-  const userIds = results.flatMap(result => [result.peerId || "", ...result.messages.flatMap(message => [message.userId, ...mentionIds(message.text)])]);
+  const userIds = results.flatMap(result => [result.peerId || "", ...result.messages.flatMap(message => [message.userId, ...mentionIds(message.content)])]);
   const users = await resolveUsers(userIds);
   for (const result of results) {
     if (result.peerId) result.name = users[result.peerId] || result.name;
     for (const message of result.messages) message.text = renderMentions(message.text, users);
+    for (const message of result.messages) message.content = renderMentions(message.content, users);
   }
   results.sort((a, b) => a.name.localeCompare(b.name));
   if (opts.json) {
@@ -121,6 +127,7 @@ export async function unread(opts: { json: boolean; threads: boolean; all: boole
         ts: message.ts,
         user: users[message.userId] || message.userId,
         text: message.text,
+        content: message.content,
         ...(message.thread ? { thread: true } : {}),
         ...(message.files ? { files: message.files } : {}),
         ...(message.mentioned ? { mentioned: true } : {}),
@@ -135,7 +142,7 @@ export async function unread(opts: { json: boolean; threads: boolean; all: boole
     for (const message of result.messages) {
       const timestamp = new Date(parseFloat(message.ts) * 1000).toLocaleTimeString();
       const marker = message.mentioned ? "@" : message.thread ? "    ↳" : "  ";
-      console.log(`${marker} [${timestamp}] ${users[message.userId] || message.userId}: ${message.text}`);
+      console.log(`${marker} [${timestamp}] ${users[message.userId] || message.userId}: ${opts.content ? message.content : message.text}`);
       for (const file of message.files || []) console.log(`      [file: ${file.name} (${file.filetype}) ${file.permalink}]`);
     }
   }

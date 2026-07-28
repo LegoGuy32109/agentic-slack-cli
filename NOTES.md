@@ -11,6 +11,13 @@
 - User names are cached by workspace and may be refreshed with `slack-cli cache users --refresh`.
 - `unread` supports `--threads`, `--files`, and `--mentions`; it renders cached user names and Slack mention markup.
 - `search` supports `--after` and `--before`; `api` provides guarded, JSON-first direct Slack API access.
+- JSON message results include canonical `content`, which incorporates visible
+  rich-text and attachment-backed prompt content. `search` defaults to no
+  surrounding window; use `context` for selected message IDs.
+- The workspace user cache stores authenticated identity metadata, including an
+  IANA timezone used for exact local-day search filtering.
+- `history` and guarded `send` provide top-level conversation polling and
+  posting for routine agent workflows; see `JOSH_WORKFLOWS.md`.
 - File `permalink` values open Slack's file page. `url_private` is the actual private asset URL and should be fetched through an authenticated backend proxy for a web UI.
 
 ## Thread unread limitation

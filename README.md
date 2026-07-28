@@ -46,6 +46,39 @@ slack-cli config path
 slack-cli logout --profile work
 ```
 
+## Updating
+
+Installed binaries can explicitly check for or install a release update. Updates
+download the platform-matched asset, verify its SHA-256 value from the release's
+`SHA256SUMS`, and replace only the executable after verification. Credentials,
+profiles, and the user cache are not modified. Downgrades require `--force`.
+
+```sh
+slack-cli --version
+slack-cli update --check
+slack-cli update
+```
+
+If a system-wide installation is not writable, install to a user-writable path
+or rerun the replacement with the required operating-system privileges. The
+existing binary is retained if download or verification fails.
+
+### Maintainer release
+
+From a branch whose committed `HEAD` contains the intended changes, run one of:
+
+```sh
+bun run release patch
+bun run release minor
+bun run release major
+```
+
+The script runs tests and a compiled build, updates `package.json` and
+`src/version.ts`, creates the release commit and annotated tag, then atomically
+pushes the branch and tag. It deliberately ignores unrelated unstaged and
+untracked files, but refuses to run when either version file has uncommitted
+edits. The pushed tag triggers the GitHub release workflow.
+
 For development or agent automation only, environment variables override the stored profile: `SLACK_XOXC_TOKEN`, `SLACK_XOXD_TOKEN`, and optionally `SLACK_WORKSPACE_URL`. A `.env` file is optional in Bun development; production binaries do not require one.
 
 ## Commands
@@ -54,6 +87,8 @@ For development or agent automation only, environment variables override the sto
 slack-cli unread                        Show all unread messages
 slack-cli search <query>                Search messages with surrounding context
 slack-cli context <channelId:ts> ...    Fetch full context for one or more messages
+slack-cli history <channelId>            Read recent normalized conversation messages
+slack-cli send <channelId> <text>        Post a message (requires --allow-write --yes)
 slack-cli mark <channel> <ts>           Mark a channel as read up to a timestamp
 slack-cli cache users --refresh          Refresh the persistent user-name cache
 slack-cli api methods                    List supported direct API methods
@@ -63,17 +98,20 @@ slack-cli api methods                    List supported direct API methods
 
 ```
 --json          Output as JSON (great for piping to agents)
+--content       Render all visible message content, including attachment prompts
 --threads       Include thread replies (unread command)
 --mentions      Show only unread direct/@here/@channel mentions
 --files         Include file metadata (unread command)
 --all           Include muted conversations (unread command)
 --count=N       Number of search results (default 20)
 --window=N      Hours of conversation to show around each message
-                  search default: 1h, context default: 4h
+                  search default: 0h, context default: 4h
 --after=DATE    Add Slack search modifier after:YYYY-MM-DD
 --before=DATE   Add Slack search modifier before:YYYY-MM-DD
 --profile=NAME  Select a stored credential profile
 --refresh-users Refresh the user-name cache before the command
+--top=N         Return the newest N messages from history (default: 20)
+--after-ts=TS   Return history newer than a timestamp
 ```
 
 ## Agent Workflow
@@ -82,13 +120,19 @@ Search returns an `id` field in `channelId:ts` format that can be passed directl
 
 ```sh
 # Find relevant messages
-slack-cli search "deploy issue" --json
+slack-cli search "from:me deploy issue" --json
 
 # Get full context around a specific message
 slack-cli context C049S9AN8DB:1751067908.325309
 
 # Batch multiple messages at once
 slack-cli context C049S9AN8DB:1751067908.325309 C049S9AN8DB:1761586752.824909
+
+# Read the latest bot/prompt conversation messages
+slack-cli history D0123456789 --top=3 --content --json
+
+# Post only with explicit write safeguards
+slack-cli send D0123456789 "Acknowledged" --allow-write --yes
 
 # Mark a channel as read
 slack-cli mark general 1751067908.325309

@@ -1,4 +1,5 @@
 import { call, mentionIds, paginate, renderMentions, resolveUsers } from "./client.ts";
+import { normalizeMessage, type VisibleAttachment } from "./message.ts";
 
 export type ExpandedFile = {
   name: string;
@@ -11,8 +12,10 @@ export type ExpandedMessage = {
   ts: string;
   user: string;
   text: string;
+  content: string;
   thread_ts?: string;
   files?: ExpandedFile[];
+  attachments?: VisibleAttachment[];
 };
 
 export type ExpandedContext = {
@@ -44,20 +47,27 @@ export async function expandMessage(channelId: string, ts: string, window: numbe
   ]);
   const allMsgs = chronological(history);
   const threadMsgs = chronological(replies);
-  const ids = [...allMsgs, ...threadMsgs].flatMap(message => [message.user, ...mentionIds(message.text || "")]);
+  const ids = [...allMsgs, ...threadMsgs].flatMap(message => {
+    const normalized = normalizeMessage(message);
+    return [normalized.userId, ...mentionIds(normalized.content)];
+  });
   const users = await resolveUsers(ids);
-  const fmt = (message: any): ExpandedMessage => ({
-    ts: message.ts,
-    user: users[message.user] ?? message.user ?? message.bot_id ?? "",
-    text: renderMentions(message.text ?? "", users),
-    ...(message.thread_ts && message.thread_ts !== message.ts ? { thread_ts: message.thread_ts } : {}),
-    ...(message.files?.length ? { files: message.files.map((file: any) => ({
+  const fmt = (message: any): ExpandedMessage => {
+    const normalized = normalizeMessage(message);
+    return {
+    ts: normalized.ts,
+    user: users[normalized.userId] ?? normalized.userId,
+    text: renderMentions(normalized.text, users),
+    content: renderMentions(normalized.content, users),
+    ...(normalized.thread_ts ? { thread_ts: normalized.thread_ts } : {}),
+    ...(normalized.files?.length ? { files: normalized.files.map((file: any) => ({
       name: file.name,
       filetype: file.filetype,
       url_private: file.url_private,
       permalink: file.permalink,
     })) } : {}),
-  });
+    ...(normalized.attachments ? { attachments: normalized.attachments } : {}),
+  }; };
   const rawMatch = allMsgs.find(message => message.ts === ts) || threadMsgs.find(message => message.ts === ts) || { ts, user: "", text: "" };
   return {
     id: `${channelId}:${ts}`,
