@@ -56,7 +56,7 @@ bun run index.ts history D0A480TTP5Z --top=3 --content --json
 # not authorize a write. Present the proposed text first and wait for Josh to
 # approve it and direct the send; do not infer approval from the surrounding
 # conversation.
-bun run index.ts send D0A480TTP5Z 'approved one-paragraph response' --allow-write --yes
+bun run index.ts send D0A480TTP5Z 'approved one-paragraph response' --allow-write
 
 # Poll for the bot's next question.
 bun run index.ts history D0A480TTP5Z --top=3 --content --json

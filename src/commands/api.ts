@@ -29,7 +29,7 @@ export function apiDescribe(method: string) {
   return info ? { method, mode: info.write ? "write" : "read", description: info.description, example: info.example } : undefined;
 }
 
-export async function api(method: string, paramsText: string | undefined, opts: { unsafe: boolean; allowWrite: boolean; yes: boolean }) {
+export async function api(method: string, paramsText: string | undefined, opts: { unsafe: boolean; allowWrite: boolean }) {
   if (!/^[a-z]+(?:\.[a-zA-Z]+)+$/.test(method)) throw new Error("Invalid Slack API method name.");
   let params: Record<string, unknown> = {};
   if (paramsText) {
@@ -38,8 +38,8 @@ export async function api(method: string, paramsText: string | undefined, opts: 
   }
   const info = methods[method];
   if (!info && !opts.unsafe) throw new Error(`Method ${method} is not in the read-only catalog. Use --unsafe-method after checking the Slack API reference.`);
-  if ((info?.write || !info) && (!opts.allowWrite || !opts.yes)) {
-    throw new Error("Write or unknown methods require both --allow-write and --yes.");
+  if ((info?.write || !info) && !opts.allowWrite) {
+    throw new Error("Write or unknown methods require --allow-write.");
   }
   return call(method, params);
 }

@@ -2,7 +2,7 @@
 
 ## Current release
 
-- `v0.2.0` is published with Linux, macOS ARM/x64, and Windows binaries.
+- `v1.0.0` is published with Linux, macOS ARM/x64, and Windows binaries.
 - A release is created by pushing an annotated `v*` tag; `.github/workflows/release.yml` builds assets and publishes the GitHub Release.
 
 ## CLI behavior implemented
@@ -18,6 +18,7 @@
   IANA timezone used for exact local-day search filtering.
 - `history` and guarded `send` provide top-level conversation polling and
   posting for routine agent workflows; see `JOSH_WORKFLOWS.md`.
+- `send`, `mark`, and direct API writes require `--allow-write`.
 - File `permalink` values open Slack's file page. `url_private` is the actual private asset URL and should be fetched through an authenticated backend proxy for a web UI.
 
 ## Thread unread limitation

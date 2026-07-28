@@ -2,7 +2,7 @@ import { expandMessage } from "../expand.ts";
 
 export async function context(ids: string[], opts: { json: boolean; window: number; content?: boolean }) {
   if (!ids.length) {
-    console.error("Usage: slack context <channelId:ts> [<channelId:ts> ...] [--window=Nh]");
+    console.error("Usage: slack-cli context <channelId:ts> [<channelId:ts> ...] [--window=N]");
     process.exit(1);
   }
 

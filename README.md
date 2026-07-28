@@ -84,14 +84,25 @@ For development or agent automation only, environment variables override the sto
 ## Commands
 
 ```
-slack-cli unread                        Show all unread messages
-slack-cli search <query>                Search messages with surrounding context
-slack-cli context <channelId:ts> ...    Fetch full context for one or more messages
-slack-cli history <channelId>            Read recent normalized conversation messages
-slack-cli send <channelId> <text>        Post a message (requires --allow-write --yes)
-slack-cli mark <channel> <ts>           Mark a channel as read up to a timestamp
-slack-cli cache users --refresh          Refresh the persistent user-name cache
-slack-cli api methods                    List supported direct API methods
+Read (safe by default)
+slack-cli unread [--mentions --threads --files --all]    Show unread messages
+slack-cli search <query> [--count=N --window=N]          Search messages
+slack-cli context <channelId:ts> ... [--window=N]        Expand selected results
+slack-cli history <channelId> [--top=N|--after-ts=TS]    Read a channel or DM chronologically
+slack-cli api methods|describe|<method>                  Use a catalogued Slack API method
+
+Write (requires --allow-write)
+slack-cli send <channelId> <text>                        Post a message
+slack-cli mark <channel> [ts]                            Mark through ts, or through now if omitted
+slack-cli api <write-method> --params JSON               Call a catalogued write method
+
+Setup and maintenance
+slack-cli auth [--profile NAME] | auth status             Save or check credentials
+slack-cli logout [--profile NAME] | config path           Remove credentials or print their path
+slack-cli cache users --refresh                           Refresh the user-name cache
+slack-cli update [--check] [--force]                      Check for or install an update
+slack-cli version | --version                             Print the installed version
+slack-cli help | --help                                   Show the command summary
 ```
 
 ### Flags
@@ -112,6 +123,11 @@ slack-cli api methods                    List supported direct API methods
 --refresh-users Refresh the user-name cache before the command
 --top=N         Return the newest N messages from history (default: 20)
 --after-ts=TS   Return history newer than a timestamp
+--params=JSON   Parameters for a direct API method
+--unsafe-method Permit an API method outside the built-in catalog
+--allow-write   Required for every command that mutates Slack
+--check         Check for an update without installing it
+--force         Permit an update downgrade
 ```
 
 ## Agent Workflow
@@ -132,10 +148,13 @@ slack-cli context C049S9AN8DB:1751067908.325309 C049S9AN8DB:1761586752.824909
 slack-cli history D0123456789 --top=3 --content --json
 
 # Post only with explicit write safeguards
-slack-cli send D0123456789 "Acknowledged" --allow-write --yes
+slack-cli send D0123456789 "Acknowledged" --allow-write
 
-# Mark a channel as read
-slack-cli mark general 1751067908.325309
+# Mark a channel as read through a specific timestamp
+slack-cli mark general 1751067908.325309 --allow-write
+
+# Mark the entire channel as read through the time this command starts
+slack-cli mark general --allow-write
 ```
 
 Search supports Slack modifiers: `in:channel`, `from:user`, `after:2026-01-01`, `before:2026-12-31`
@@ -149,15 +168,15 @@ slack-cli api methods
 slack-cli api describe conversations.history
 slack-cli api users.info --params '{"user":"U123"}' --json
 slack-cli api conversations.history --params '{"channel":"C123","limit":100}' --json
-slack-cli api reactions.add --params '{"channel":"C123","timestamp":"1710000000.000001","name":"white_check_mark"}' --allow-write --yes
+slack-cli api reactions.add --params '{"channel":"C123","timestamp":"1710000000.000001","name":"white_check_mark"}' --allow-write
 ```
 
-The built-in catalog starts read-only. Methods outside it require `--unsafe-method`; mutations additionally require both `--allow-write` and `--yes`:
+The built-in catalog starts read-only. Catalogued write methods require `--allow-write`. Methods outside the catalog require both `--unsafe-method` and `--allow-write`, because the CLI cannot verify that they are read-only:
 
 ```sh
 slack-cli api conversations.mark \
   --params '{"channel":"C123","ts":"1710000000.000001"}' \
-  --allow-write --yes
+  --allow-write
 ```
 
 Check the official [Slack Web API method reference](https://api.slack.com/methods) for current parameters, pagination, and complete behavior. Browser-session credentials may not work with every public Slack API method.

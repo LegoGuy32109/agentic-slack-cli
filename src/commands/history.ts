@@ -2,7 +2,7 @@ import { call, mentionIds, paginate, renderMentions, resolveUsers } from "../cli
 import { normalizeMessage } from "../message.ts";
 
 export async function history(channelId: string, opts: { json: boolean; top?: number; afterTs?: string; content?: boolean }) {
-  if (!channelId) throw new Error("Usage: slack history <channelId> [--top=N | --after-ts=TS]");
+  if (!channelId) throw new Error("Usage: slack-cli history <channelId> [--top=N | --after-ts=TS]");
   if (opts.top !== undefined && opts.afterTs) throw new Error("Use either --top or --after-ts, not both.");
   if (opts.top !== undefined && (!Number.isInteger(opts.top) || opts.top < 1)) throw new Error("--top must be a positive integer.");
   const limit = opts.top ?? 20;

@@ -7,6 +7,7 @@ import { decodeXoxd } from "../src/config.ts";
 import { mentionIds, renderMentions } from "../src/client.ts";
 import { resolveCachedIdentity, resolveCachedUsers } from "../src/user-cache.ts";
 import { normalizeMessage } from "../src/message.ts";
+import { markInternals } from "../src/commands/mark.ts";
 import { updateInternals } from "../src/commands/update.ts";
 
 const originalCache = process.env.XDG_CACHE_HOME;
@@ -68,4 +69,10 @@ test("update helpers compare versions and parse checksums", () => {
   expect(updateInternals.compareVersions("v0.3.1", "0.3.0")).toBe(1);
   expect(updateInternals.compareVersions("v0.3.0", "0.3.0")).toBe(0);
   expect(updateInternals.expectedChecksum(`${"a".repeat(64)}  slack-cli-linux-x64\n`, "slack-cli-linux-x64")).toBe("a".repeat(64));
+});
+
+test("mark timestamps default to command-start time and reject invalid input", () => {
+  expect(markInternals.markTimestamp(undefined, 1710000000123)).toBe("1710000000.123000");
+  expect(markInternals.markTimestamp("1710000000.000001")).toBe("1710000000.000001");
+  expect(() => markInternals.markTimestamp("t890234")).toThrow("Invalid timestamp");
 });
