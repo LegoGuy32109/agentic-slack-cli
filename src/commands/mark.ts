@@ -1,6 +1,5 @@
 import { call } from "../client.ts";
-
-type Channel = { id: string; label: string };
+import { resolveChannel } from "../references.ts";
 
 function markTimestamp(value: string | undefined, now = Date.now()): string {
   if (value === undefined) return (now / 1000).toFixed(6);
@@ -8,30 +7,6 @@ function markTimestamp(value: string | undefined, now = Date.now()): string {
     throw new Error(`Invalid timestamp "${value}". Use a Unix timestamp such as 1710000000.000001, or omit it to mark through now.`);
   }
   return value;
-}
-
-async function resolveChannel(nameOrId: string): Promise<Channel> {
-  // Already an ID
-  if (/^[CDGW][A-Z0-9]+$/.test(nameOrId)) return { id: nameOrId, label: nameOrId };
-
-  // Resolve by name — paginate through all member channels
-  const name = nameOrId.replace(/^#/, "").toLowerCase();
-  let cursor: string | undefined;
-  do {
-    const res = await call("conversations.list", {
-      types: "public_channel,private_channel,mpim,im",
-      exclude_archived: true,
-      limit: 200,
-      ...(cursor ? { cursor } : {}),
-    });
-    const match = (res.channels as any[]).find(
-      (c: any) => c.name?.toLowerCase() === name
-    );
-    if (match) return { id: match.id, label: `#${match.name}` };
-    cursor = res.response_metadata?.next_cursor || undefined;
-  } while (cursor);
-
-  throw new Error(`Could not resolve channel "${nameOrId}". Use a visible channel name (with or without #) or a channel ID.`);
 }
 
 export async function mark(nameOrId: string, inputTs: string | undefined, opts: { allowWrite: boolean }) {

@@ -9,6 +9,7 @@ import { resolveCachedIdentity, resolveCachedUsers } from "../src/user-cache.ts"
 import { normalizeMessage } from "../src/message.ts";
 import { markInternals } from "../src/commands/mark.ts";
 import { updateInternals } from "../src/commands/update.ts";
+import { wireParams } from "../src/operations.ts";
 
 const originalCache = process.env.XDG_CACHE_HOME;
 const temporaryDirs: string[] = [];
@@ -75,4 +76,10 @@ test("mark timestamps default to command-start time and reject invalid input", (
   expect(markInternals.markTimestamp(undefined, 1710000000123)).toBe("1710000000.123000");
   expect(markInternals.markTimestamp("1710000000.000001")).toBe("1710000000.000001");
   expect(() => markInternals.markTimestamp("t890234")).toThrow("Invalid timestamp");
+});
+
+test("wire parameters preserve native JSON arrays and objects", () => {
+  expect(wireParams({ channel: "C1", blocks: [{ type: "section" }], metadata: { event_type: "notice" }, retry: 2 })).toEqual({
+    channel: "C1", blocks: '[{"type":"section"}]', metadata: '{"event_type":"notice"}', retry: "2",
+  });
 });

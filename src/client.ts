@@ -1,5 +1,5 @@
 import { loadCredentials } from "./config.ts";
-import { refreshUserCache, resolveCachedIdentity, resolveCachedUsers } from "./user-cache.ts";
+import { findCachedUsers, refreshUserCache, resolveCachedIdentity, resolveCachedUsers, type CachedUser } from "./user-cache.ts";
 
 export type ApiParams = Record<string, unknown>;
 
@@ -12,11 +12,13 @@ async function credentials() {
   return credentialsPromise;
 }
 
+export async function workspaceUrl(): Promise<string> { return (await credentials()).credentials.workspaceUrl; }
+
 export async function call(method: string, params: ApiParams = {}): Promise<any> {
   const { credentials: auth } = await credentials();
   const body = new URLSearchParams({ token: auth.xoxc });
   for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null) body.set(key, typeof value === "string" ? value : String(value));
+    if (value !== undefined && value !== null) body.set(key, typeof value === "string" ? value : typeof value === "object" ? JSON.stringify(value) : String(value));
   }
   for (let attempt = 0; attempt < 3; attempt++) {
     const res = await fetch(`${auth.workspaceUrl}/api/${method}`, {
@@ -69,6 +71,34 @@ export async function refreshUsers(): Promise<number> {
     // Browser-auth Slack currently returns `members`; the public API uses `users`.
     return { users: result.users || result.members || [], response_metadata: result.response_metadata };
   });
+}
+
+export async function findUsers(query: string): Promise<CachedUser[]> {
+  const { credentials: auth } = await credentials();
+  let matches = await findCachedUsers(auth.workspaceUrl, query);
+  if (!matches.length) {
+    await refreshUsers();
+    matches = await findCachedUsers(auth.workspaceUrl, query);
+  }
+  return matches;
+}
+
+export async function resolveMentionTokens(text: string): Promise<string> {
+  const tokens = [...text.matchAll(/@\{([^}]+)\}/g)];
+  if (!tokens.length) return text;
+  const resolved = new Map<string, string>();
+  for (const token of tokens) {
+    const query = token[1]!.trim();
+    const matches = await findUsers(query);
+    const exact = matches.filter(user => [user.displayName, user.realName, user.username].some(value => value?.toLowerCase() === query.toLowerCase()));
+    const candidates = exact.length ? exact : matches;
+    if (candidates.length !== 1) {
+      const labels = candidates.slice(0, 5).map(user => `${user.displayName || user.username || user.id} (${user.id})`).join(", ");
+      throw new Error(candidates.length ? `Mention "${query}" is ambiguous: ${labels}.` : `Could not find a Slack user matching "${query}".`);
+    }
+    resolved.set(token[0], `<@${candidates[0]!.id}>`);
+  }
+  return text.replace(/@\{([^}]+)\}/g, token => resolved.get(token) || token);
 }
 
 export async function currentUserId(): Promise<string> {

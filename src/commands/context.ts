@@ -1,4 +1,5 @@
 import { expandMessage } from "../expand.ts";
+import { resolveChannel } from "../references.ts";
 
 export async function context(ids: string[], opts: { json: boolean; window: number; content?: boolean }) {
   if (!ids.length) {
@@ -15,9 +16,7 @@ export async function context(ids: string[], opts: { json: boolean; window: numb
     return { channelId, ts };
   });
 
-  const results = await Promise.all(
-    parsed.map(({ channelId, ts }) => expandMessage(channelId, ts, opts.window))
-  );
+  const results = await Promise.all(parsed.map(async ({ channelId, ts }) => expandMessage((await resolveChannel(channelId)).id, ts, opts.window)));
 
   if (opts.json) {
     console.log(JSON.stringify(results, null, 2));

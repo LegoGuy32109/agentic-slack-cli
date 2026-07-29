@@ -104,3 +104,48 @@ bun --hot ./index.ts
 ```
 
 For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+
+## slack-cli product standards
+
+This is an agent-oriented CLI. Prefer explicit, inspectable behavior over
+shortcuts that can cause an unintended Slack mutation.
+
+### Mutation safety
+
+- Every command that could mutate Slack must preview by default. A preview may
+  perform read-only work such as resolving a channel or user, but it must never
+  call the mutating Slack endpoint.
+- `--allow-write` is the only flag that authorizes a mutation. Do not add a
+  second confirmation flag or a separate opt-in mode.
+- The default preview must show the resolved operation: method, resolved IDs,
+  normalized parameters, and the form-encoded wire parameters where relevant.
+- Apply this rule uniformly to dedicated commands and `api` calls. Unknown API
+  methods still require `--unsafe-method`, and preview by default because their
+  mutability cannot be established locally.
+- Do not infer permission to write from a request to research, draft, inspect,
+  or format a message.
+
+### References and message composition
+
+- Accept a channel ID, bare visible channel name, or `#channel` everywhere a
+  command accepts a channel. Resolve known API `channel` parameters through the
+  shared resolver; keep unknown unsafe API parameters transparent.
+- Keep workspace identity data in the shared cache. `users find` returns IDs
+  and candidate names; do not reimplement lookups in individual commands.
+- In outbound message text, only `@{Name}` is a mention request. Resolve it to
+  `<@USER_ID>` and fail on missing or ambiguous matches. Never rewrite ordinary
+  `@Name` text automatically.
+- Preserve plain text by default. Rich formatting, including bullet lists, is
+  opt-in (`--format=rich`) and raw Block Kit remains available through
+  `--blocks`; always retain a plain-text fallback.
+
+### API and verification standards
+
+- Direct API input accepts inline JSON or `@file.json`. Arrays and objects must
+  be JSON-encoded for Slack's form transport; never use JavaScript `String()`
+  for structured values.
+- Put reference normalization and request preparation in shared layers before
+  the transport client. Command modules should not each invent their own wire
+  encoding or channel lookup.
+- Keep `bun run typecheck` and `bun test` passing for every change. Add focused
+  tests for any new serialization, resolver, write-preview, or safety behavior.

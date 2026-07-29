@@ -91,15 +91,16 @@ slack-cli context <channelId:ts> ... [--window=N]        Expand selected results
 slack-cli history <channelId> [--top=N|--after-ts=TS]    Read a channel or DM chronologically
 slack-cli api methods|describe|<method>                  Use a catalogued Slack API method
 
-Write (requires --allow-write)
-slack-cli send <channelId> <text>                        Post a message
-slack-cli mark <channel> [ts]                            Mark through ts, or through now if omitted
-slack-cli api <write-method> --params JSON               Call a catalogued write method
+Write (preview by default; --allow-write mutates)
+slack-cli send <channelId> <text>                        Preview or post a message
+slack-cli mark <channel> [ts]                            Preview or mark through ts
+slack-cli api <write-method> --params JSON               Preview or call a catalogued write method
 
 Setup and maintenance
 slack-cli auth [--profile NAME] | auth status             Save or check credentials
 slack-cli logout [--profile NAME] | config path           Remove credentials or print their path
 slack-cli cache users --refresh                           Refresh the user-name cache
+slack-cli users find <query>                              Find user IDs and names
 slack-cli update [--check] [--force]                      Check for or install an update
 slack-cli version | --version                             Print the installed version
 slack-cli help | --help                                   Show the command summary
@@ -124,8 +125,10 @@ slack-cli help | --help                                   Show the command summa
 --top=N         Return the newest N messages from history (default: 20)
 --after-ts=TS   Return history newer than a timestamp
 --params=JSON   Parameters for a direct API method
+--blocks=JSON   Raw Block Kit array or @file for send
+--format=KIND   Send format: plain (default) or rich
 --unsafe-method Permit an API method outside the built-in catalog
---allow-write   Required for every command that mutates Slack
+--allow-write   Perform a Slack mutation; write commands preview by default
 --check         Check for an update without installing it
 --force         Permit an update downgrade
 ```
@@ -150,6 +153,15 @@ slack-cli history D0123456789 --top=3 --content --json
 # Post only with explicit write safeguards
 slack-cli send D0123456789 "Acknowledged" --allow-write
 
+# Preview a resolved write. Omitting --allow-write never sends a Slack message.
+slack-cli send developers 'Hi @{Seth Foss}' --json
+
+# Explicit rich-list formatting; plain dash lines remain literal by default.
+slack-cli send developers $'Agenda:\n- alpha\n- beta' --format=rich --allow-write
+
+# Send native Block Kit from a JSON array file, while keeping a text fallback.
+slack-cli send developers "Deployment update" --blocks @blocks.json --allow-write
+
 # Mark a channel as read through a specific timestamp
 slack-cli mark general 1751067908.325309 --allow-write
 
@@ -169,9 +181,12 @@ slack-cli api describe conversations.history
 slack-cli api users.info --params '{"user":"U123"}' --json
 slack-cli api conversations.history --params '{"channel":"C123","limit":100}' --json
 slack-cli api reactions.add --params '{"channel":"C123","timestamp":"1710000000.000001","name":"white_check_mark"}' --allow-write
+
+# Params may be inline JSON or a file. Arrays and objects are encoded correctly.
+slack-cli api chat.postMessage --params @message.json --allow-write
 ```
 
-The built-in catalog starts read-only. Catalogued write methods require `--allow-write`. Methods outside the catalog require both `--unsafe-method` and `--allow-write`, because the CLI cannot verify that they are read-only:
+The built-in catalog starts read-only. Catalogued writes preview by default and run only with `--allow-write`. Methods outside the catalog require `--unsafe-method`; they also preview by default because the CLI cannot verify whether they mutate:
 
 ```sh
 slack-cli api conversations.mark \
@@ -180,6 +195,16 @@ slack-cli api conversations.mark \
 ```
 
 Check the official [Slack Web API method reference](https://api.slack.com/methods) for current parameters, pagination, and complete behavior. Browser-session credentials may not work with every public Slack API method.
+
+### References, mentions, and write previews
+
+Commands that take a channel accept an ID, a bare visible channel name, or `#name`.
+Known direct API methods resolve their `channel` parameter the same way. Use `users find
+"Seth Foss"` to inspect available identities. In `send` text, `@{Seth Foss}` resolves to a
+real Slack mention; the command refuses ambiguous or missing matches rather than guessing.
+
+Every write path resolves references and prints the normalized parameters plus the form-encoded
+wire representation by default, but never calls the write endpoint until `--allow-write` is present.
 
 ## Build from Source
 

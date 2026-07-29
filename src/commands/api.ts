@@ -1,4 +1,5 @@
 import { call } from "../client.ts";
+import { jsonInput, prepareOperation, wireParams } from "../operations.ts";
 
 type MethodInfo = { write?: boolean; description: string; example: Record<string, unknown> };
 
@@ -15,7 +16,7 @@ const methods: Record<string, MethodInfo> = {
   "client.counts": { description: "Get browser-client unread counts.", example: {} },
   "users.prefs.get": { description: "Get user preferences including muted channels.", example: {} },
   "conversations.mark": { write: true, description: "Mark a conversation read through a timestamp.", example: { channel: "C123", ts: "1710000000.000001" } },
-  "chat.postMessage": { write: true, description: "Post a message to a conversation.", example: { channel: "C123", text: "Hello" } },
+  "chat.postMessage": { write: true, description: "Post a message to a conversation. Native blocks arrays are JSON-encoded for Slack.", example: { channel: "C123", text: "Hello", blocks: [{ type: "section", text: { type: "mrkdwn", text: "Hello" } }] } },
   "chat.delete": { write: true, description: "Delete a message authored by the authenticated user.", example: { channel: "C123", ts: "1710000000.000001" } },
   "reactions.add": { write: true, description: "Add an emoji reaction to a message.", example: { channel: "C123", timestamp: "1710000000.000001", name: "white_check_mark" } },
 };
@@ -31,15 +32,10 @@ export function apiDescribe(method: string) {
 
 export async function api(method: string, paramsText: string | undefined, opts: { unsafe: boolean; allowWrite: boolean }) {
   if (!/^[a-z]+(?:\.[a-zA-Z]+)+$/.test(method)) throw new Error("Invalid Slack API method name.");
-  let params: Record<string, unknown> = {};
-  if (paramsText) {
-    try { params = JSON.parse(paramsText); } catch { throw new Error("--params must be a valid JSON object."); }
-    if (!params || Array.isArray(params) || typeof params !== "object") throw new Error("--params must be a JSON object.");
-  }
+  const params = await jsonInput(paramsText);
   const info = methods[method];
   if (!info && !opts.unsafe) throw new Error(`Method ${method} is not in the read-only catalog. Use --unsafe-method after checking the Slack API reference.`);
-  if ((info?.write || !info) && !opts.allowWrite) {
-    throw new Error("Write or unknown methods require --allow-write.");
-  }
-  return call(method, params);
+  const prepared = await prepareOperation(method, params);
+  if ((info?.write || !info) && !opts.allowWrite) return { ok: true, dry_run: true, method, params: prepared, wire_params: wireParams(prepared) };
+  return call(method, prepared);
 }
