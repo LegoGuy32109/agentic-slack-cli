@@ -10,6 +10,7 @@ import { normalizeMessage } from "../src/message.ts";
 import { markInternals } from "../src/commands/mark.ts";
 import { updateInternals } from "../src/commands/update.ts";
 import { wireParams } from "../src/operations.ts";
+import { listInternals } from "../src/commands/lists.ts";
 
 const originalCache = process.env.XDG_CACHE_HOME;
 const temporaryDirs: string[] = [];
@@ -82,4 +83,33 @@ test("wire parameters preserve native JSON arrays and objects", () => {
   expect(wireParams({ channel: "C1", blocks: [{ type: "section" }], metadata: { event_type: "notice" }, retry: 2 })).toEqual({
     channel: "C1", blocks: '[{"type":"section"}]', metadata: '{"event_type":"notice"}', retry: "2",
   });
+});
+
+test("List references accept IDs and canonical Slack List URLs", () => {
+  expect(listInternals.listId("F0A7CDM1KKL")).toBe("F0A7CDM1KKL");
+  expect(listInternals.listId("https://gogeoh.slack.com/lists/T9XTTMR28/F0A7CDM1KKL")).toBe("F0A7CDM1KKL");
+  expect(listInternals.listId("https://gogeoh.slack.com/files/F0A7CDM1KKL")).toBeUndefined();
+});
+
+test("List positions use the table ordering rather than API response ordering", () => {
+  expect(["1785339468", "1785339470", "1785339469", "1785339470.l", "1785339470.V"].sort(listInternals.comparePosition)).toEqual(["1785339468", "1785339469", "1785339470", "1785339470.V", "1785339470.l"]);
+  expect(listInternals.positionAfter("10", "12")).toBe("11");
+  expect(listInternals.positionAfter("10", "11")).toBe("10.V");
+  expect(listInternals.positionAfter("10.V", "10.l")).toBe("10.d");
+});
+
+test("List payload checks verify raw writes without Slack access", () => {
+  expect(listInternals.parseWhere("Name=Row=1")).toEqual({ column: "Name", value: "Row=1" });
+  expect(listInternals.cellMatches({ column_id: "C1", text: "Hello" }, { row_id: "R1", column_id: "C1", rich_text: [{ elements: [{ elements: [{ text: "Hello" }] }] }] })).toBe(true);
+  expect(listInternals.cellMatches({ column_id: "C1", number: [] }, { row_id: "R1", column_id: "C1", number: [] })).toBe(true);
+  expect(listInternals.cellMatches({ column_id: "C1", checkbox: false }, { row_id: "R1", column_id: "C1", checkbox: false })).toBe(true);
+});
+
+test("List helpers resolve names and build typed payloads without Slack access", async () => {
+  expect(listInternals.resolveListCandidate("Tracker", [{ id: "F1", title: "Tracker" }])).toEqual({ id: "F1", title: "Tracker" });
+  expect(() => listInternals.resolveListCandidate("Tracker", [{ id: "F1", title: "Tracker" }, { id: "F2", title: "Tracker" }])).toThrow("ambiguous");
+  const columns = [{ id: "C1", name: "Name", type: "text" }, { id: "C2", name: "Count", type: "number" }];
+  expect(listInternals.selectRecords([{ id: "R1", fields: [{ column_id: "C1", text: "QA-7" }] }], columns, "Name=QA-7").matches.map((row: { id: string }) => row.id)).toEqual(["R1"]);
+  expect(await listInternals.typedCell(columns[1]!, "R1", "42", false)).toEqual({ row_id: "R1", column_id: "C2", number: [42] });
+  expect(await listInternals.typedCell(columns[1]!, "R1", undefined, true)).toEqual({ row_id: "R1", column_id: "C2", number: [] });
 });

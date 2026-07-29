@@ -9,6 +9,7 @@ import { usersFind } from "./src/commands/users.ts";
 import { update } from "./src/commands/update.ts";
 import { VERSION } from "./src/version.ts";
 import { unread } from "./src/commands/unread.ts";
+import { lists } from "./src/commands/lists.ts";
 import { credentialStatus, currentUserId, refreshUsers } from "./src/client.ts";
 import { credentialsPath, removeCredentials } from "./src/config.ts";
 
@@ -22,7 +23,7 @@ const flagSpecs = {
   json: false, content: false, threads: false, files: false, mentions: false, all: false,
   count: true, window: true, after: true, before: true, top: true, "after-ts": true,
   profile: true, "refresh-users": false, "allow-write": false, force: false, check: false,
-  params: true, blocks: true, format: true, "unsafe-method": false, refresh: false,
+  params: true, blocks: true, format: true, "unsafe-method": false, refresh: false, cells: true, where: true, column: true, value: true, clear: false,
 } as const;
 type FlagName = keyof typeof flagSpecs;
 
@@ -60,9 +61,14 @@ const afterTs = value("after-ts");
 const params = value("params");
 const blocks = value("blocks");
 const format = value("format");
+const cells = value("cells");
+const listAfter = command === "lists" ? value("after") : undefined;
+const where = value("where");
+const column = value("column");
+const listValue = value("value");
 const opts = {
   json: flag("json"), threads: flag("threads"), files: flag("files"), mentions: flag("mentions"), all: flag("all"),
-  count: number("count", 20), window: number("window", -1), after: date("after"), before: date("before"),
+  count: number("count", 20), window: number("window", -1), after: command === "lists" ? undefined : date("after"), before: date("before"),
   top: topRaw === undefined ? undefined : Number(topRaw), afterTs, content: flag("content"),
   allowWrite: flag("allow-write"),
   force: flag("force"), check: flag("check"),
@@ -105,6 +111,15 @@ function validateInvocation() {
     case "search": validateFlags(["json", "content", "count", "window", "after", "before", ...shared, "refresh-users"]); return requirePositionals(1, Infinity, "slack-cli search <query> [--count=N --window=N]");
     case "context": validateFlags(["json", "content", "window", ...shared, "refresh-users"]); return requirePositionals(1, Infinity, "slack-cli context <channelId:ts> ... [--window=N]");
     case "history": validateFlags(["json", "content", "top", "after-ts", ...shared, "refresh-users"]); return requirePositionals(1, 1, "slack-cli history <channelId> [--top=N|--after-ts=TS]");
+    case "lists": {
+      validateFlags(["json", "allow-write", "cells", "where", "after", "column", "value", "clear", ...shared]);
+      const action = positional[0];
+      if (action === "list") return requirePositionals(1, 1, "slack-cli lists list");
+      if (action === "schema" || action === "rows") return requirePositionals(2, 2, "slack-cli lists schema|rows <list-url-or-id-or-title>");
+      if (action === "move") return requirePositionals(2, 2, "slack-cli lists move <list-url-or-id-or-title> --where Column=Value --after Column=Value [--allow-write]");
+      if (action === "update") return requirePositionals(2, 2, "slack-cli lists update <list-url-or-id-or-title> --where Column=Value --column Column --value Value [--allow-write]");
+      return invocationError("Usage: slack-cli lists list|schema|rows|move|update ...");
+    }
     case "send": validateFlags(["json", "allow-write", "blocks", "format", ...shared]); return requirePositionals(2, Infinity, "slack-cli send <channel> <text> [--allow-write]");
     case "mark": validateFlags(["allow-write", ...shared]); return requirePositionals(1, 2, "slack-cli mark <channel-name-or-id> [ts] [--allow-write]");
     case "update": validateFlags(["check", "force"]); return requirePositionals(0, 0, "slack-cli update [--check] [--force]");
@@ -137,12 +152,16 @@ Read (safe by default):
   search <query> [--count=N --window=N]          Search; use --json for agent output
   context <channelId:ts> ... [--window=N]        Expand selected search results
   history <channelId> [--top=N|--after-ts=TS]    Read a channel or DM chronologically
+  lists list                                      Show accessible Slack Lists
+  lists schema|rows <list>                        Inspect a List's schema or rows
   api methods|describe|<method>                  Use a catalogued Slack API method
 
 Write (preview by default; --allow-write mutates):
   send <channelId> <text>                        Preview or post a message
   mark <channel> [ts]                             Preview or mark through ts
   api <write-method> --params JSON                Preview or call a catalogued write method
+  lists update <list> --where X=Y --column X ...  Preview or change one List cell
+  lists move <list> --where X=Y --after X=Y       Preview or reorder one List row
 
 Setup and maintenance:
   auth [--profile NAME] | auth status             Save or check credentials
@@ -155,6 +174,9 @@ Setup and maintenance:
 Common flags:
   --json --content --profile=NAME --refresh-users
   --after=YYYY-MM-DD --before=YYYY-MM-DD          search only
+  --after=COL=VALUE                               lists move only
+  --where=COL=VALUE --column=COL --value=VALUE    lists update only
+  --clear                                         clear a supported List cell
   --allow-write                                   perform a write (writes preview by default)
 
 Use --help for this summary. Use \`api methods\` or \`api describe <method>\`
@@ -196,6 +218,10 @@ async function main() {
   if (command === "search") return search(positional.join(" "), { ...opts, window: opts.window < 0 ? 0 : opts.window });
   if (command === "context") return context(positional, { ...opts, window: opts.window < 0 ? 4 : opts.window });
   if (command === "history") return history(positional[0] || "", { json: opts.json, top: opts.top, afterTs: opts.afterTs, content: opts.content });
+  if (command === "lists") {
+    const result = await lists(positional[0] || "", positional[1], { allowWrite: opts.allowWrite, cells, where, after: listAfter, column, value: listValue, clear: flag("clear") });
+    return console.log(JSON.stringify(result, null, 2));
+  }
   if (command === "send") return send(positional[0] || "", positional.slice(1).join(" "), opts);
   if (command === "update") return update({ check: opts.check, force: opts.force });
   if (command === "api") {

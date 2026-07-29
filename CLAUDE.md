@@ -110,6 +110,12 @@ For more information, read the Bun API docs in `node_modules/bun-types/docs/**.m
 This is an agent-oriented CLI. Prefer explicit, inspectable behavior over
 shortcuts that can cause an unintended Slack mutation.
 
+### Issue tracking
+
+- Record each open issue, investigation, and proposed follow-up in its own
+  file under `issues/`, following `issues/README.md`. Do not append them to
+  `NOTES.md`; it documents only durable, current behavior and decisions.
+
 ### Mutation safety
 
 - Every command that could mutate Slack must preview by default. A preview may

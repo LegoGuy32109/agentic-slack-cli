@@ -90,11 +90,15 @@ slack-cli search <query> [--count=N --window=N]          Search messages
 slack-cli context <channelId:ts> ... [--window=N]        Expand selected results
 slack-cli history <channelId> [--top=N|--after-ts=TS]    Read a channel or DM chronologically
 slack-cli api methods|describe|<method>                  Use a catalogued Slack API method
+slack-cli lists list                                        Show accessible Slack Lists
+slack-cli lists schema|rows <list-url-or-id-or-title>      Inspect a List schema or rows
 
 Write (preview by default; --allow-write mutates)
 slack-cli send <channelId> <text>                        Preview or post a message
 slack-cli mark <channel> [ts]                            Preview or mark through ts
 slack-cli api <write-method> --params JSON               Preview or call a catalogued write method
+slack-cli lists update <list> --where X=Y --column X ... Preview or change one List cell
+slack-cli lists move <list> --where X=Y --after X=Y       Preview or reorder one List row
 
 Setup and maintenance
 slack-cli auth [--profile NAME] | auth status             Save or check credentials
@@ -125,6 +129,12 @@ slack-cli help | --help                                   Show the command summa
 --top=N         Return the newest N messages from history (default: 20)
 --after-ts=TS   Return history newer than a timestamp
 --params=JSON   Parameters for a direct API method
+--cells=JSON    List update payload: {"cells":[...]}
+--where=COL=VALUE  Match one List row for an update or filter List rows
+--after=COL=VALUE  Place a matched List row immediately after this row
+--column=COL    Schema column to update
+--value=VALUE   Typed value to set on a List cell
+--clear         Clear a supported List cell
 --blocks=JSON   Raw Block Kit array or @file for send
 --format=KIND   Send format: plain (default) or rich
 --unsafe-method Permit an API method outside the built-in catalog

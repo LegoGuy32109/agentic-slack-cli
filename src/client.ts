@@ -43,6 +43,46 @@ export async function call(method: string, params: ApiParams = {}): Promise<any>
   throw new Error(`${method} failed after retries`);
 }
 
+// Slack's browser-only endpoints expect multipart form data, unlike the
+// public Web API methods above. Keep this transport explicit so callers do
+// not accidentally switch a documented public method to a private endpoint.
+export async function callMultipart(method: string, params: ApiParams = {}): Promise<any> {
+  const { credentials: auth } = await credentials();
+  const body = new FormData();
+  body.set("token", auth.xoxc);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) body.set(key, typeof value === "string" ? value : typeof value === "object" ? JSON.stringify(value) : String(value));
+  }
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch(`${auth.workspaceUrl}/api/${method}`, {
+      method: "POST",
+      headers: { "Cookie": `d=${encodeURIComponent(auth.xoxd)}`, "Origin": "https://app.slack.com", "User-Agent": "Mozilla/5.0 (compatible)" },
+      body,
+    });
+    const data = await res.json() as any;
+    if (data.ok) return data;
+    if ((res.status === 429 || data.error === "ratelimited") && attempt < 2) {
+      const seconds = Number(res.headers.get("retry-after") || "1");
+      await Bun.sleep(Math.max(1, seconds) * 1000);
+      continue;
+    }
+    throw new Error(`${method} failed: ${data.error}`);
+  }
+  throw new Error(`${method} failed after retries`);
+}
+
+export async function paginateMultipart(method: string, params: ApiParams, key: string, maxPages = 20): Promise<any[]> {
+  const all: any[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < maxPages; page++) {
+    const result = await callMultipart(method, { ...params, ...(cursor ? { cursor } : {}) });
+    all.push(...(result[key] || []));
+    cursor = result.response_metadata?.next_cursor || undefined;
+    if (!cursor) break;
+  }
+  return all;
+}
+
 export async function paginate(method: string, params: ApiParams, key: string, maxPages = 20): Promise<any[]> {
   const all: any[] = [];
   let cursor: string | undefined;
