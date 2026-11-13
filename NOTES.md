@@ -6,9 +6,9 @@ Record durable decisions and unresolved risks that a future contributor needs;
 do not use it for user-specific workflows, credentials, local snapshots, or
 temporary task logs. Remove or revise entries once they are no longer true.
 
-## Current release
+## Release distribution
 
-- `v1.2.0` is published with Linux, macOS ARM/x64, and Windows binaries.
+- Public releases include Linux, macOS ARM/x64, and Windows binaries. The latest GitHub release identifies the current version.
 - A release is created by pushing an annotated `v*` tag; `.github/workflows/release.yml` builds assets and publishes the GitHub Release.
 
 ## CLI behavior implemented
