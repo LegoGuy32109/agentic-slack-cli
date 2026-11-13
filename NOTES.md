@@ -8,7 +8,7 @@ temporary task logs. Remove or revise entries once they are no longer true.
 
 ## Current release
 
-- `v1.0.1` is published with Linux, macOS ARM/x64, and Windows binaries.
+- `v1.2.0` is published with Linux, macOS ARM/x64, and Windows binaries.
 - A release is created by pushing an annotated `v*` tag; `.github/workflows/release.yml` builds assets and publishes the GitHub Release.
 
 ## CLI behavior implemented
@@ -16,7 +16,7 @@ temporary task logs. Remove or revise entries once they are no longer true.
 - Browser credentials are stored in a per-user OS config directory with profiles; environment variables remain automation overrides.
 - Workspace user and channel references are cached. `users find` resolves user
   IDs, names, and handles; channel-taking commands accept IDs, names, or `#name`.
-- `unread` supports `--threads`, `--files`, and `--mentions`; it renders cached user names and Slack mention markup.
+- `unread` shows everything by default (channels, groups, DMs, followed threads, files as links), excludes muted conversations unless `--all`, and renders cached user names and Slack mention markup. `search` is the path to filter by mention, `@handle`/`@{Name}`/`<@ID>` in the query, for any user, not just the caller.
 - `search` supports `--after` and `--before`; `api` provides guarded, JSON-first direct Slack API access.
 - JSON message results include canonical `content`, which incorporates visible
   rich-text and attachment-backed prompt content. `search` defaults to no
@@ -31,13 +31,28 @@ temporary task logs. Remove or revise entries once they are no longer true.
   Slack mentions only when they identify exactly one cached user.
 - File `permalink` values open Slack's file page. `url_private` is the actual private asset URL and should be fetched through an authenticated backend proxy for a web UI.
 
-## Thread unread limitation
+## Two unread models, both covered
 
-Slack has two distinct unread models:
+Slack has two distinct unread surfaces, and they need two different writes:
 
-1. Channel unread top-level messages, based on a conversation read cursor.
-2. Unread replies in followed or mentioned threads, surfaced by Slack's Threads view.
+1. Channel-level unread top-level messages, based on a conversation read cursor
+   (`client.counts`, cleared by `conversations.mark`).
+2. Unread replies in followed or mentioned threads, Slack's own Threads view
+   (`subscriptions.thread.getView`, cleared by `subscriptions.thread.mark`).
+   `conversations.mark` does not touch this surface at all, confirmed live,
+   marking a channel read leaves its followed threads' unread state untouched.
 
-The current `unread --threads` implementation expands full threads beneath unread parents for context. It does **not** distinguish individually unread replies from contextual replies. `conversations.mark` is safe for top-level chronological messages, but can hide later thread replies when their parent falls before the mark timestamp.
+`unread` scans and merges both (`src/unread-scan.ts`), tagging each message with
+`source: "channel" | "thread"`. `mark <ts>` re-scans both at call time and writes
+to whichever endpoint applies, per conversation or thread, continuing past
+individual failures.
 
-Do not use partial chronological marks as a guarantee that all later thread replies remain in Slack's unread view. A robust future implementation needs to merge the channel unread feed with Slack's unread-thread-reply feed and label replies as unread versus context-only.
+`mark` never reads a conversation's current cursor before writing, so it does not
+guard against moving a cursor backward if the read cursor already advanced past
+`ts` some other way (reading natively in Slack in the meantime). That's an
+accepted, rare cost. What it does guarantee: no write it makes can move a cursor
+past `ts` itself, so anything timestamped after `ts`, regardless of whether that
+conversation was ever shown to the caller, keeps its own later timestamp and
+stays unread. `mark` deliberately does not require the caller's exact
+conversation list for this reason, a fresh scan is exactly as safe as a stored
+one, since the timestamp boundary is what actually protects unseen content.

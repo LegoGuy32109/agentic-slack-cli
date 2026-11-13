@@ -32,6 +32,13 @@ function blockText(block: any, parts: string[]) {
   }
 }
 
+/** Flattens every text/mrkdwn string out of an outbound blocks array, for scanning before send. */
+export function blocksText(blocks: unknown): string {
+  const parts: string[] = [];
+  if (Array.isArray(blocks)) for (const block of blocks) blockText(block, parts);
+  return parts.join("\n");
+}
+
 export function visibleAttachments(message: any): VisibleAttachment[] | undefined {
   const attachments = (message.attachments || []).map((attachment: any) => ({
     ...(attachment.fallback ? { fallback: attachment.fallback } : {}),
@@ -63,6 +70,37 @@ export function visibleContent(message: any): string {
     }
   }
   return parts.filter(part => !parts.some(other => other !== part && other.includes(part))).join("\n");
+}
+
+/** Builds a rich_text block from plain text, rendering `-`/`*` lines as a bullet list. */
+export function richBlocks(text: string) {
+  const elements: any[] = [];
+  const lines = text.split("\n");
+  for (let index = 0; index < lines.length;) {
+    const list: any[] = [];
+    while (index < lines.length && /^[-*]\s+/.test(lines[index]!)) {
+      list.push({ type: "rich_text_section", elements: [{ type: "text", text: lines[index]!.replace(/^[-*]\s+/, "") }] });
+      index++;
+    }
+    if (list.length) elements.push({ type: "rich_text_list", style: "bullet", elements: list });
+    else { if (lines[index]) elements.push({ type: "rich_text_section", elements: [{ type: "text", text: lines[index]! }] }); index++; }
+  }
+  return [{ type: "rich_text", elements }];
+}
+
+// A real mention is `<@U123>`. `@{Name}` is the input syntax that resolves to
+// one before this ever runs. Anything else that looks like `@Word` posts as
+// inert plain text and notifies no one, which is almost always a typo for
+// `@{Name}` rather than intent. Require a preceding start/whitespace/bracket
+// so `user@example.com` (no space before `@`) is left alone.
+const MENTION_LOOKALIKE = /(?:^|[\s([{])@([A-Za-z][\w'-]*)/g;
+
+/** Flags text containing a plain `@Word` that isn't a resolved `<@U…>` mention. */
+export function unresolvedMentionWarning(text: string): string | undefined {
+  const found = new Set<string>();
+  for (const match of text.matchAll(MENTION_LOOKALIKE)) found.add(`@${match[1]}`);
+  if (!found.size) return undefined;
+  return `Message contains ${[...found].join(", ")} as plain text, not a Slack mention — it will not notify anyone. Did you mean to write @{Name} so it resolves to a real mention?`;
 }
 
 export function normalizeMessage(message: any): NormalizedMessage {

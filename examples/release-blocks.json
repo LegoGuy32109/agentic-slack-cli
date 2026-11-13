@@ -1,0 +1,48 @@
+[
+  {
+    "type": "header",
+    "text": {
+      "type": "plain_text",
+      "text": "🚀 Orbit release review"
+    }
+  },
+  {
+    "type": "context",
+    "elements": [
+      {
+        "type": "mrkdwn",
+        "text": "DEMO DATA • Fictional project and results"
+      }
+    ]
+  },
+  {
+    "type": "divider"
+  },
+  {
+    "type": "section",
+    "fields": [
+      {
+        "type": "mrkdwn",
+        "text": "*Build*\n✅ Passed"
+      },
+      {
+        "type": "mrkdwn",
+        "text": "*Review*\n🟡 Desktop pending"
+      }
+    ]
+  },
+  {
+    "type": "section",
+    "text": {
+      "type": "mrkdwn",
+      "text": "*Ready for review*\n• Search and conversation context\n• Thread replies and file uploads\n• Preview before every write"
+    }
+  },
+  {
+    "type": "section",
+    "text": {
+      "type": "mrkdwn",
+      "text": "*Scope:* Example results only. No production deployment.\n<https://example.com/review|Open example review>"
+    }
+  }
+]

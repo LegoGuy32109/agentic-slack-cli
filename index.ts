@@ -1,6 +1,7 @@
 import { api, apiDescribe, apiMethods } from "./src/commands/api.ts";
 import { auth } from "./src/commands/auth.ts";
 import { context } from "./src/commands/context.ts";
+import { edit } from "./src/commands/edit.ts";
 import { history } from "./src/commands/history.ts";
 import { mark } from "./src/commands/mark.ts";
 import { search } from "./src/commands/search.ts";
@@ -20,10 +21,11 @@ const consumed = new Set<number>();
 let parseError: string | undefined;
 
 const flagSpecs = {
-  json: false, content: false, threads: false, files: false, mentions: false, all: false,
+  json: false, content: false, all: false,
   count: true, window: true, after: true, before: true, top: true, "after-ts": true,
   profile: true, "refresh-users": false, "allow-write": false, force: false, check: false,
   params: true, blocks: true, format: true, "unsafe-method": false, refresh: false, cells: true, where: true, column: true, value: true, clear: false,
+  file: true, title: true, "thread-ts": true, verify: false, only: true, ignore: true,
 } as const;
 type FlagName = keyof typeof flagSpecs;
 
@@ -39,6 +41,20 @@ function value(name: string): string | undefined {
   }
   if (index >= 0) parseError ??= `--${name} requires a value.`;
   return undefined;
+}
+// Repeatable flag: `--file a.md --file b.png`. Every occurrence is consumed so
+// none of the values leak into the positional arguments.
+function values(name: string): string[] {
+  const collected: string[] = [];
+  for (const [index, arg] of rest.entries()) {
+    if (arg.startsWith(`--${name}=`)) { collected.push(arg.slice(name.length + 3)); continue; }
+    if (arg !== `--${name}`) continue;
+    const next = rest[index + 1];
+    if (next === undefined || next.startsWith("--")) { parseError ??= `--${name} requires a value.`; continue; }
+    consumed.add(index + 1);
+    collected.push(next);
+  }
+  return collected;
 }
 function number(name: string, fallback: number): number {
   const raw = value(name);
@@ -62,17 +78,26 @@ const params = value("params");
 const blocks = value("blocks");
 const format = value("format");
 const cells = value("cells");
+const files = values("file");
+const titles = values("title");
+const threadTs = value("thread-ts");
 const listAfter = command === "lists" ? value("after") : undefined;
 const where = value("where");
 const column = value("column");
 const listValue = value("value");
+const only = value("only");
+const ignore = value("ignore");
 const opts = {
-  json: flag("json"), threads: flag("threads"), files: flag("files"), mentions: flag("mentions"), all: flag("all"),
+  json: flag("json"), all: flag("all"),
   count: number("count", 20), window: number("window", -1), after: command === "lists" ? undefined : date("after"), before: date("before"),
   top: topRaw === undefined ? undefined : Number(topRaw), afterTs, content: flag("content"),
   allowWrite: flag("allow-write"),
   force: flag("force"), check: flag("check"),
   blocks, format,
+  // `files` is already the unread flag, so attachments carry their own name.
+  attachments: files, titles, threadTs, verify: flag("verify"),
+  only: only?.split(",").map(part => part.trim()).filter(Boolean),
+  ignore: ignore?.split(",").map(part => part.trim()).filter(Boolean),
 };
 const positional = rest.filter((arg, index) => !arg.startsWith("--") && !consumed.has(index));
 
@@ -107,7 +132,7 @@ function validateInvocation() {
     case "config": validateFlags([]); if (positional[0] !== "path") invocationError("Usage: slack-cli config path"); return requirePositionals(1, 1, "slack-cli config path");
     case "cache": validateFlags(["refresh"]); if (positional[0] !== "users" || !flag("refresh")) invocationError("Usage: slack-cli cache users --refresh"); return requirePositionals(1, 1, "slack-cli cache users --refresh");
     case "users": validateFlags(["json", ...shared]); if (positional[0] !== "find") invocationError("Usage: slack-cli users find <query>"); return requirePositionals(2, Infinity, "slack-cli users find <query>");
-    case "unread": validateFlags(["json", "content", "threads", "files", "mentions", "all", ...shared, "refresh-users"]); return requirePositionals(0, 0, "slack-cli unread [--mentions --threads --files --all]");
+    case "unread": validateFlags(["json", "content", "all", ...shared, "refresh-users"]); return requirePositionals(0, 0, "slack-cli unread [--json --all]");
     case "search": validateFlags(["json", "content", "count", "window", "after", "before", ...shared, "refresh-users"]); return requirePositionals(1, Infinity, "slack-cli search <query> [--count=N --window=N]");
     case "context": validateFlags(["json", "content", "window", ...shared, "refresh-users"]); return requirePositionals(1, Infinity, "slack-cli context <channelId:ts> ... [--window=N]");
     case "history": validateFlags(["json", "content", "top", "after-ts", ...shared, "refresh-users"]); return requirePositionals(1, 1, "slack-cli history <channelId> [--top=N|--after-ts=TS]");
@@ -120,8 +145,15 @@ function validateInvocation() {
       if (action === "update") return requirePositionals(2, 2, "slack-cli lists update <list-url-or-id-or-title> --where Column=Value --column Column --value Value [--allow-write]");
       return invocationError("Usage: slack-cli lists list|schema|rows|move|update ...");
     }
-    case "send": validateFlags(["json", "allow-write", "blocks", "format", ...shared]); return requirePositionals(2, Infinity, "slack-cli send <channel> <text> [--allow-write]");
-    case "mark": validateFlags(["allow-write", ...shared]); return requirePositionals(1, 2, "slack-cli mark <channel-name-or-id> [ts] [--allow-write]");
+    case "send": {
+      validateFlags(["json", "allow-write", "blocks", "format", "file", "title", "thread-ts", "verify", ...shared]);
+      if (titles.length > files.length) invocationError("Each --title needs a matching --file.");
+      if (flag("verify") && !files.length) invocationError("--verify applies to --file uploads.");
+      // A file can carry the whole message, so text is optional when --file is present.
+      return requirePositionals(files.length ? 1 : 2, Infinity, "slack-cli send <channel> <text> [--file PATH] [--thread-ts TS] [--allow-write]");
+    }
+    case "mark": validateFlags(["allow-write", "only", "ignore", ...shared]); return requirePositionals(1, 1, "slack-cli mark <ts> [--only channel,channel] [--ignore channel,channel] [--allow-write]");
+    case "edit": validateFlags(["json", "allow-write", "blocks", "format", ...shared]); return requirePositionals(3, Infinity, "slack-cli edit <channelId> <ts> <text> [--allow-write]");
     case "update": validateFlags(["check", "force"]); return requirePositionals(0, 0, "slack-cli update [--check] [--force]");
     case "api": {
       validateFlags(["json", "params", "unsafe-method", "allow-write", ...shared]);
@@ -148,8 +180,8 @@ function usage() {
 Usage: slack-cli <command> [flags]
 
 Read (safe by default):
-  unread [--mentions --threads --files --all]    Show unread messages
-  search <query> [--count=N --window=N]          Search; use --json for agent output
+  unread [--all]                                  Show every unread message, channels and threads, files as links
+  search <query> [--count=N --window=N]          Search; use --json for agent output. @handle/@{Name}/<@ID> filters to that user's mentions, any user
   context <channelId:ts> ... [--window=N]        Expand selected search results
   history <channelId> [--top=N|--after-ts=TS]    Read a channel or DM chronologically
   lists list                                      Show accessible Slack Lists
@@ -158,7 +190,9 @@ Read (safe by default):
 
 Write (preview by default; --allow-write mutates):
   send <channelId> <text>                        Preview or post a message
-  mark <channel> [ts]                             Preview or mark through ts
+  send <channelId> <text> --file PATH             Preview or post a message with attachments
+  edit <channelId> <ts> <text>                    Preview or edit your own message's text in place
+  mark <ts> [--only ch,ch] [--ignore ch,ch]       Mark everything unread through ts; ts comes from unread's request_ts
   api <write-method> --params JSON                Preview or call a catalogued write method
   lists update <list> --where X=Y --column X ...  Preview or change one List cell
   lists move <list> --where X=Y --after X=Y       Preview or reorder one List row
@@ -173,11 +207,19 @@ Setup and maintenance:
 
 Common flags:
   --json --content --profile=NAME --refresh-users
+  --all                                           unread only: include muted conversations
+  --only=ch,ch --ignore=ch,ch                     mark only: mutually exclusive channel filters
   --after=YYYY-MM-DD --before=YYYY-MM-DD          search only
   --after=COL=VALUE                               lists move only
   --where=COL=VALUE --column=COL --value=VALUE    lists update only
   --clear                                         clear a supported List cell
+  --file=PATH --title=NAME --thread-ts=TS         send only; repeat --file for several attachments
+  --verify                                        send only; re-read each upload from Slack after posting
   --allow-write                                   perform a write (writes preview by default)
+
+A write reports its effect class. A message can be deleted. A file outlives its
+message, stays fetchable by permalink, and counts against workspace storage, so a
+file preview prints each path, size, sha256, and first line before anything uploads.
 
 Use --help for this summary. Use \`api methods\` or \`api describe <method>\`
 before calling the direct API; unknown methods require --unsafe-method and preview by default.`);
@@ -214,7 +256,12 @@ async function main() {
   if (command === "users" && positional[0] === "find") return usersFind(positional.slice(1).join(" "), opts.json);
   if (flag("refresh-users")) console.log(`Refreshed ${await refreshUsers()} users.`);
   if (command === "unread") return unread(opts);
-  if (command === "mark") return mark(positional[0] || "", positional[1], opts);
+  if (command === "mark") return mark(positional[0] || "", { only: opts.only, ignore: opts.ignore, allowWrite: opts.allowWrite });
+  if (command === "edit") {
+    return edit(positional[0] || "", positional[1] || "", positional.slice(2).join(" "), {
+      allowWrite: opts.allowWrite, json: opts.json, blocks: opts.blocks, format: opts.format,
+    });
+  }
   if (command === "search") return search(positional.join(" "), { ...opts, window: opts.window < 0 ? 0 : opts.window });
   if (command === "context") return context(positional, { ...opts, window: opts.window < 0 ? 4 : opts.window });
   if (command === "history") return history(positional[0] || "", { json: opts.json, top: opts.top, afterTs: opts.afterTs, content: opts.content });
@@ -222,7 +269,12 @@ async function main() {
     const result = await lists(positional[0] || "", positional[1], { allowWrite: opts.allowWrite, cells, where, after: listAfter, column, value: listValue, clear: flag("clear") });
     return console.log(JSON.stringify(result, null, 2));
   }
-  if (command === "send") return send(positional[0] || "", positional.slice(1).join(" "), opts);
+  if (command === "send") {
+    return send(positional[0] || "", positional.slice(1).join(" "), {
+      allowWrite: opts.allowWrite, json: opts.json, blocks: opts.blocks, format: opts.format,
+      files: opts.attachments, titles: opts.titles, threadTs: opts.threadTs, verify: opts.verify,
+    });
+  }
   if (command === "update") return update({ check: opts.check, force: opts.force });
   if (command === "api") {
     const method = positional[0];

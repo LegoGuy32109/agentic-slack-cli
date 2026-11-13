@@ -141,6 +141,12 @@ export async function resolveMentionTokens(text: string): Promise<string> {
   return text.replace(/@\{([^}]+)\}/g, token => resolved.get(token) || token);
 }
 
+export async function permalink(channel: string, ts?: string): Promise<string | undefined> {
+  if (!ts) return undefined;
+  try { return (await call("chat.getPermalink", { channel, message_ts: ts })).permalink as string; }
+  catch { return undefined; }
+}
+
 export async function currentUserId(): Promise<string> {
   currentUserPromise ??= call("auth.test").then(result => result.user_id as string);
   return currentUserPromise;

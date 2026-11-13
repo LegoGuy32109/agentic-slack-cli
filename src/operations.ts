@@ -3,8 +3,11 @@ import { resolveChannel } from "./references.ts";
 
 const channelMethods = new Set([
   "conversations.info", "conversations.history", "conversations.replies", "conversations.members",
-  "conversations.mark", "chat.postMessage", "chat.delete", "reactions.add",
+  "conversations.mark", "chat.postMessage", "chat.update", "chat.delete", "reactions.add", "chat.getPermalink",
 ]);
+
+// files.completeUploadExternal names its target `channel_id`, not `channel`.
+const channelIdMethods = new Set(["files.completeUploadExternal"]);
 
 export async function jsonValueInput(value: string, flag: string): Promise<unknown> {
   const source = value.startsWith("@") ? await readFile(value.slice(1), "utf8") : value;
@@ -21,6 +24,7 @@ export async function jsonInput(value: string | undefined, flag = "--params"): P
 export async function prepareOperation(method: string, original: Record<string, unknown>): Promise<Record<string, unknown>> {
   const params = { ...original };
   if (channelMethods.has(method) && typeof params.channel === "string") params.channel = (await resolveChannel(params.channel)).id;
+  if (channelIdMethods.has(method) && typeof params.channel_id === "string") params.channel_id = (await resolveChannel(params.channel_id)).id;
   return params;
 }
 

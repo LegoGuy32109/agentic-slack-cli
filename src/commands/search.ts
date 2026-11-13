@@ -27,7 +27,7 @@ function shiftDate(date: string, days: number): string {
 
 export async function search(query: string, opts: { json: boolean; count: number; window: number; after?: string; before?: string; content?: boolean }) {
   if (!query) {
-    console.error("Usage: slack-cli search <query> [--count=N] [--window=N]\nModifiers: in:channel from:user|from:me after:2026-01-01 before:2026-12-31");
+    console.error("Usage: slack-cli search <query> [--count=N] [--window=N]\nModifiers: in:channel from:user|from:me after:2026-01-01 before:2026-12-31\n@handle, @{Display Name}, or <@USERID> filters to messages mentioning that user, any user in the workspace, not just yourself. A unique handle avoids display-name collisions.");
     process.exit(1);
   }
 

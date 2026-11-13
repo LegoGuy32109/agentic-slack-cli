@@ -1,0 +1,32 @@
+[
+  {
+    "type": "header",
+    "text": {
+      "type": "plain_text",
+      "text": "🛠 Read. Preview. Review."
+    }
+  },
+  {
+    "type": "context",
+    "elements": [
+      {
+        "type": "mrkdwn",
+        "text": "DEMO DATA • Commands preview writes unless approved"
+      }
+    ]
+  },
+  {
+    "type": "section",
+    "text": {
+      "type": "mrkdwn",
+      "text": "*Find the context*\n```slack-cli search \"in:general release\" --json\nslack-cli history general --top=5 --content```"
+    }
+  },
+  {
+    "type": "section",
+    "text": {
+      "type": "mrkdwn",
+      "text": "*Inspect the draft*\n```slack-cli send general \"Ready for review\" --json```\nAdd `--allow-write` after approval."
+    }
+  }
+]

@@ -1,41 +1,26 @@
 import { call } from "../client.ts";
+import { catalogEntries, isWrite, methodInfo, missingRequired } from "../methods.ts";
 import { jsonInput, prepareOperation, wireParams } from "../operations.ts";
 
-type MethodInfo = { write?: boolean; description: string; example: Record<string, unknown> };
-
-const methods: Record<string, MethodInfo> = {
-  "auth.test": { description: "Identify the authenticated Slack user and workspace.", example: {} },
-  "users.info": { description: "Get one user's profile.", example: { user: "U123" } },
-  "users.list": { description: "List workspace users; paginate with cursor.", example: { limit: 200 } },
-  "conversations.info": { description: "Get channel or DM metadata.", example: { channel: "C123" } },
-  "conversations.list": { description: "List conversations; paginate with cursor.", example: { limit: 200 } },
-  "conversations.history": { description: "Get channel messages; paginate with cursor.", example: { channel: "C123", limit: 100 } },
-  "conversations.replies": { description: "Get a message thread; paginate with cursor.", example: { channel: "C123", ts: "1710000000.000001", limit: 100 } },
-  "conversations.members": { description: "List conversation members; paginate with cursor.", example: { channel: "C123", limit: 200 } },
-  "search.messages": { description: "Search workspace messages.", example: { query: "deployment after:2026-01-01", count: 20 } },
-  "client.counts": { description: "Get browser-client unread counts.", example: {} },
-  "users.prefs.get": { description: "Get user preferences including muted channels.", example: {} },
-  "conversations.mark": { write: true, description: "Mark a conversation read through a timestamp.", example: { channel: "C123", ts: "1710000000.000001" } },
-  "chat.postMessage": { write: true, description: "Post a message to a conversation. Native blocks arrays are JSON-encoded for Slack.", example: { channel: "C123", text: "Hello", blocks: [{ type: "section", text: { type: "mrkdwn", text: "Hello" } }] } },
-  "chat.delete": { write: true, description: "Delete a message authored by the authenticated user.", example: { channel: "C123", ts: "1710000000.000001" } },
-  "reactions.add": { write: true, description: "Add an emoji reaction to a message.", example: { channel: "C123", timestamp: "1710000000.000001", name: "white_check_mark" } },
-};
-
 export function apiMethods() {
-  return Object.entries(methods).map(([method, info]) => ({ method, mode: info.write ? "write" : "read", description: info.description }));
+  return catalogEntries();
 }
 
 export function apiDescribe(method: string) {
-  const info = methods[method];
-  return info ? { method, mode: info.write ? "write" : "read", description: info.description, example: info.example } : undefined;
+  const info = methodInfo(method);
+  return info ? { method, mode: isWrite(info) ? "write" : "read", effect: info.effect, description: info.description, required: info.required ?? [], example: info.example } : undefined;
 }
 
 export async function api(method: string, paramsText: string | undefined, opts: { unsafe: boolean; allowWrite: boolean }) {
-  if (!/^[a-z]+(?:\.[a-zA-Z]+)+$/.test(method)) throw new Error("Invalid Slack API method name.");
+  if (!/^[A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*)+$/.test(method)) throw new Error("Invalid Slack API method name.");
   const params = await jsonInput(paramsText);
-  const info = methods[method];
+  const info = methodInfo(method);
   if (!info && !opts.unsafe) throw new Error(`Method ${method} is not in the read-only catalog. Use --unsafe-method after checking the Slack API reference.`);
+  const missing = missingRequired(info, params);
+  if (missing.length) throw new Error(`${method} requires ${missing.join(", ")}.`);
   const prepared = await prepareOperation(method, params);
-  if ((info?.write || !info) && !opts.allowWrite) return { ok: true, dry_run: true, method, params: prepared, wire_params: wireParams(prepared) };
+  if ((isWrite(info) || !info) && !opts.allowWrite) {
+    return { ok: true, dry_run: true, method, effect: info?.effect ?? "unknown", params: prepared, wire_params: wireParams(prepared) };
+  }
   return call(method, prepared);
 }

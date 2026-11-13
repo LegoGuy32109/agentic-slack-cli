@@ -1,231 +1,289 @@
-# agentic-slack-cli
+<h1 align="center">agentic-slack-cli</h1>
 
-A CLI tool for AI agents to read and search Slack using browser auth tokens. No OAuth app required — authenticate by pasting a curl command copied from Slack's network tab.
+<p align="center">
+  <strong>Slack, from your terminal.</strong><br>
+  For you and your coding agent. Read the context. Preview the message. Send after approval.
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#rich-messages">Rich messages</a> ·
+  <a href="#files-and-threads">Files and threads</a> ·
+  <a href="#for-coding-agents">For agents</a> ·
+  <a href="#updates">Updates</a> ·
+  <a href="#command-reference">Commands</a>
+</p>
+
+Read a conversation, find the decision, and turn it into a readable update.
+The executable is `slack-cli`. Slack writes preview by default. Posting requires `--allow-write`.
+
+<p align="center">
+  <img src="docs/images/release-message.png" alt="A Slack release update with build and review status fields, a checklist, a scope note, and a labeled review link." width="626">
+  <br><sub>Sent from the CLI with native Block Kit</sub>
+</p>
+
+```sh
+slack-cli history general --top=10
+slack-cli send general "Ready for review"
+# Review the content and destination, then approve the send:
+slack-cli send general "Ready for review" --allow-write
+```
+
+| Read | Compose | Review | Update |
+| --- | --- | --- | --- |
+| Channels, DMs, followed threads, search, and unread messages | Native bullet lists, Block Kit, files, and thread replies | Inspect resolved IDs and parameters before posting | `slack-cli update` installs a checksum-verified release |
+
+> **Before you install:** This independent tool uses Slack browser-session credentials without an OAuth app.
+> Slack changes can break it. Workspace policies and your account permissions still apply.
 
 ## Install
 
+Download a binary from [GitHub Releases](https://github.com/LegoGuy32109/agentic-slack-cli/releases/latest), or use the installer on macOS and Linux.
+Running a release binary needs no Bun or Node.js.
+
 ```sh
-curl -fsSL https://raw.githubusercontent.com/LegoGuy32109/agentic-slack-cli/master/install.sh | sh
+curl -fsSLO https://raw.githubusercontent.com/LegoGuy32109/agentic-slack-cli/master/install.sh
+sh install.sh
 ```
 
-Or download a binary directly from the [latest release](https://github.com/LegoGuy32109/agentic-slack-cli/releases/latest):
+The installer downloads the matching binary and verifies its SHA-256 checksum before installation.
+It defaults to `~/.local/bin`. Add that folder to your PATH if needed.
 
-| Platform | File |
-|---|---|
+<details>
+<summary>Platforms and manual installation</summary>
+
+| Machine | Release asset |
+| --- | --- |
 | Linux x64 | `slack-cli-linux-x64` |
-| Mac (Apple Silicon) | `slack-cli-mac-arm64` |
-| Mac (Intel) | `slack-cli-mac-x64` |
+| macOS Apple silicon | `slack-cli-mac-arm64` |
+| macOS Intel | `slack-cli-mac-x64` |
 | Windows x64 | `slack-cli-windows-x64.exe` |
 
-## Authentication
+For Windows, download the executable and `SHA256SUMS` from the same release.
+Verify the checksum, rename the executable to `slack-cli.exe`, and place it in a folder on your PATH.
+The shell installer supports macOS and Linux only. Native Linux ARM64 and Windows ARM64 builds are not supplied.
+Set `SLACK_CLI_BIN` to choose another installation folder.
 
-The CLI uses Slack's browser tokens (`xoxc` + `xoxd`), which work without installing a Slack app. Released binaries store credentials in your user configuration directory—not alongside the executable or repository:
+</details>
 
-- Linux: `$XDG_CONFIG_HOME/slack-cli/credentials.json` (or `~/.config/slack-cli/credentials.json`)
-- macOS: `~/Library/Application Support/slack-cli/credentials.json`
-- Windows: `%APPDATA%\slack-cli\credentials.json`
+## Quick start
 
-**How to get your tokens:**
-
-1. Open Slack in Chrome/Brave and open DevTools (F12)
-2. Go to the **Network** tab, filter by `api/`
-3. Click any Slack API request, right-click → **Copy as cURL**
-4. Run:
+1. Open your Slack workspace in a browser and open DevTools.
+2. In **Network**, filter requests by `api/`, then copy a Slack API request with **Copy as cURL**.
+3. Run the authentication command, paste the request, and end input with Ctrl+D.
 
 ```sh
-slack-cli auth
-# paste the curl command, then Ctrl+D
+slack-cli auth --profile demo
+slack-cli auth status --profile demo
+slack-cli history general --top=5 --profile demo
 ```
 
-Credentials are stored under the selected profile (default: `default`). Re-run `auth` when tokens expire.
+The CLI extracts the browser tokens from your pasted request and stores them locally.
+Authenticate again when the session expires. See [credentials and profiles](docs/credentials.md) for paths and environment overrides.
+
+Start with a preview:
 
 ```sh
-slack-cli auth --profile work
-slack-cli auth status
-slack-cli config path
-slack-cli logout --profile work
+slack-cli send general "First draft" --profile demo --json
 ```
 
-## Updating
+A channel reference can be an ID, a bare visible name, or `#name`.
+Use a DM conversation ID for a direct message. A user ID is not a DM destination.
+Discover accessible conversations with `slack-cli api conversations.list --params '{"limit":200}'`.
 
-Installed binaries can explicitly check for or install a release update. Updates
-download the platform-matched asset, verify its SHA-256 value from the release's
-`SHA256SUMS`, and replace only the executable after verification. Credentials,
-profiles, and the user cache are not modified. Downgrades require `--force`.
+## Rich messages
+
+Use `--format=rich` to turn consecutive `-` or `*` lines into native Slack bullet lists.
+Other lines remain text sections. This mode is a small list formatter, not a general Markdown renderer.
 
 ```sh
-slack-cli --version
-slack-cli update --check
-slack-cli update
+slack-cli send general 'Review checklist:
+- Tests passed
+- Desktop review pending' --format=rich
 ```
 
-If a system-wide installation is not writable, install to a user-writable path
-or rerun the replacement with the required operating-system privileges. The
-existing binary is retained if download or verification fails.
-
-### Maintainer release
-
-From a branch whose committed `HEAD` contains the intended changes, run one of:
+For a structured update, supply native Block Kit JSON and a text fallback:
 
 ```sh
-bun run release patch
-bun run release minor
-bun run release major
+slack-cli send general "Demo release: checks passed, desktop review pending." \
+  --blocks @examples/release-blocks.json --json
 ```
 
-The script runs tests and a compiled build, updates `package.json` and
-`src/version.ts`, creates the release commit and annotated tag, then atomically
-pushes the branch and tag. It deliberately ignores unrelated unstaged and
-untracked files, but refuses to run when either version file has uncommitted
-edits. The pushed tag triggers the GitHub release workflow.
+<p align="center">
+  <img src="docs/images/code-and-checklist.png" alt="Slack renders two command blocks, an inline approval flag, and a native three-item bullet checklist." width="651">
+  <br><sub>Code blocks and a native checklist in Slack</sub>
+</p>
 
-For development or agent automation only, environment variables override the stored profile: `SLACK_XOXC_TOKEN`, `SLACK_XOXD_TOKEN`, and optionally `SLACK_WORKSPACE_URL`. A `.env` file is optional in Bun development; production binaries do not require one.
+The [release example](examples/release-blocks.json) uses a heading, status fields, a review checklist, and a labeled link.
+The [code example](examples/code-blocks.json) uses a fenced command block and an inline command.
+Add `--allow-write` only after reviewing the destination and content.
 
-## Commands
+| You want | Use |
+| --- | --- |
+| Native bullet lists | `--format=rich` |
+| A structured layout | `--blocks @message.json` |
+| A real person mention | `@{Display Name}` in message text |
+| A labeled Slack link | `<https://example.com/review|Open review>` in a `mrkdwn` block |
+| An attachment | `--file report.md` |
+| A reply | `--thread-ts ROOT_TS` |
 
-```
-Read (safe by default)
-slack-cli unread [--mentions --threads --files --all]    Show unread messages
-slack-cli search <query> [--count=N --window=N]          Search messages
-slack-cli context <channelId:ts> ... [--window=N]        Expand selected results
-slack-cli history <channelId> [--top=N|--after-ts=TS]    Read a channel or DM chronologically
-slack-cli api methods|describe|<method>                  Use a catalogued Slack API method
-slack-cli lists list                                        Show accessible Slack Lists
-slack-cli lists schema|rows <list-url-or-id-or-title>      Inspect a List schema or rows
+`@{Name}` resolves to a real mention or fails if the match is missing or ambiguous.
+Plain `@Name` stays literal and produces a warning. Raw blocks remain caller-supplied JSON, so use explicit Slack IDs for mentions inside blocks.
+See [reproducible examples and screenshot notes](docs/showcase.md).
 
-Write (preview by default; --allow-write mutates)
-slack-cli send <channelId> <text>                        Preview or post a message
-slack-cli mark <channel> [ts]                            Preview or mark through ts
-slack-cli api <write-method> --params JSON               Preview or call a catalogued write method
-slack-cli lists update <list> --where X=Y --column X ... Preview or change one List cell
-slack-cli lists move <list> --where X=Y --after X=Y       Preview or reorder one List row
+## Files and threads
 
-Setup and maintenance
-slack-cli auth [--profile NAME] | auth status             Save or check credentials
-slack-cli logout [--profile NAME] | config path           Remove credentials or print their path
-slack-cli cache users --refresh                           Refresh the user-name cache
-slack-cli users find <query>                              Find user IDs and names
-slack-cli update [--check] [--force]                      Check for or install an update
-slack-cli version | --version                             Print the installed version
-slack-cli help | --help                                   Show the command summary
-```
-
-### Flags
-
-```
---json          Output as JSON (great for piping to agents)
---content       Render all visible message content, including attachment prompts
---threads       Include thread replies (unread command)
---mentions      Show only unread direct/@here/@channel mentions
---files         Include file metadata (unread command)
---all           Include muted conversations (unread command)
---count=N       Number of search results (default 20)
---window=N      Hours of conversation to show around each message
-                  search default: 0h, context default: 4h
---after=DATE    Add Slack search modifier after:YYYY-MM-DD
---before=DATE   Add Slack search modifier before:YYYY-MM-DD
---profile=NAME  Select a stored credential profile
---refresh-users Refresh the user-name cache before the command
---top=N         Return the newest N messages from history (default: 20)
---after-ts=TS   Return history newer than a timestamp
---params=JSON   Parameters for a direct API method
---cells=JSON    List update payload: {"cells":[...]}
---where=COL=VALUE  Match one List row for an update or filter List rows
---after=COL=VALUE  Place a matched List row immediately after this row
---column=COL    Schema column to update
---value=VALUE   Typed value to set on a List cell
---clear         Clear a supported List cell
---blocks=JSON   Raw Block Kit array or @file for send
---format=KIND   Send format: plain (default) or rich
---unsafe-method Permit an API method outside the built-in catalog
---allow-write   Perform a Slack mutation; write commands preview by default
---check         Check for an update without installing it
---force         Permit an update downgrade
-```
-
-## Agent Workflow
-
-Search returns an `id` field in `channelId:ts` format that can be passed directly to `context`:
+Attach a file with an optional comment. Repeat `--file` for several attachments.
+Each `--title` applies to the corresponding file.
 
 ```sh
-# Find relevant messages
-slack-cli search "from:me deploy issue" --json
+slack-cli send general "Demo verification report" \
+  --file examples/demo-report.md --title "Demo verification" --json
 
-# Get full context around a specific message
-slack-cli context C049S9AN8DB:1751067908.325309
-
-# Batch multiple messages at once
-slack-cli context C049S9AN8DB:1751067908.325309 C049S9AN8DB:1761586752.824909
-
-# Read the latest bot/prompt conversation messages
-slack-cli history D0123456789 --top=3 --content --json
-
-# Post only with explicit write safeguards
-slack-cli send D0123456789 "Acknowledged" --allow-write
-
-# Preview a resolved write. Omitting --allow-write never sends a Slack message.
-slack-cli send developers 'Hi @{Seth Foss}' --json
-
-# Explicit rich-list formatting; plain dash lines remain literal by default.
-slack-cli send developers $'Agenda:\n- alpha\n- beta' --format=rich --allow-write
-
-# Send native Block Kit from a JSON array file, while keeping a text fallback.
-slack-cli send developers "Deployment update" --blocks @blocks.json --allow-write
-
-# Mark a channel as read through a specific timestamp
-slack-cli mark general 1751067908.325309 --allow-write
-
-# Mark the entire channel as read through the time this command starts
-slack-cli mark general --allow-write
+# After approval, upload and check the posted file IDs and sizes:
+slack-cli send general "Demo verification report" \
+  --file examples/demo-report.md --title "Demo verification" --verify --allow-write
 ```
 
-Search supports Slack modifiers: `in:channel`, `from:user`, `after:2026-01-01`, `before:2026-12-31`
+<p align="center">
+  <img src="docs/images/file-message.png" alt="Slack previews an uploaded Markdown report with a table of fictional verification results." width="797">
+  <br><sub>A Markdown file uploaded with --file and rendered by Slack</sub>
+</p>
 
-## Advanced: direct Slack API calls
+Previews show each file's path, size, SHA-256, and first line when available. They reserve no upload IDs and upload no bytes.
+The CLI rejects empty files and files larger than 1 GiB.
+`--verify` checks the posted message for the expected file IDs and sizes. It does not compare downloaded bytes.
+Files cannot combine with `--blocks` or `--format=rich` because the upload uses an initial comment.
 
-Use `api` when a Slack API method does not have a dedicated command. It uses the same stored profile and browser credentials, so agents never need to expose tokens in cURL commands. Responses are raw JSON and can contain Slack IDs.
+Use the root message timestamp for a thread reply:
+
+```sh
+slack-cli send general "Desktop review is next." --thread-ts 1710000000.000001
+```
+
+<details>
+<summary>See the thread reply</summary>
+
+<p align="center">
+  <img src="docs/images/thread-reply.png" alt="The Slack thread pane shows the release update above a follow-up reply." width="546">
+  <br><sub>A follow-up sent with --thread-ts</sub>
+</p>
+
+</details>
+
+An uploaded file can outlive its message. Delete the file separately with the previewed `api files.delete` operation when needed.
+
+## Edit a message
+
+```sh
+slack-cli edit general 1710000000.000001 "Updated: desktop review passed." --json
+```
+
+`edit` supports `--blocks` and `--format=rich`, like `send`. Slack permits edits to your own messages only.
+Both commands return a message timestamp and a permalink when Slack supplies one.
+
+## For coding agents
+
+Read commands support `--json`. Use `--content` to include visible block and attachment text when reading messages.
+Search results include an `id` in `channelId:ts` format that `context` accepts directly.
+
+```sh
+slack-cli search 'in:general release' --count=10 --json
+slack-cli context C123:1710000000.000001 --window=4 --content --json
+slack-cli unread --content --json
+```
+
+`unread` includes channels, group DMs, DMs, followed threads, and file links. Add `--all` to include muted conversations.
+Reading does not mark messages read.
+
+Give your agent this instruction:
+
+> Use `slack-cli` to read recent context before drafting a Slack message.
+> Preview every write with `--json` and show me the content and destination.
+> Only add `--allow-write` after I approve the operation.
+> If delivery is uncertain, inspect history before trying again.
+
+Use the `request_ts` from an unread scan as an explicit read boundary:
+
+```sh
+slack-cli mark 1710000000.000001 --only general
+# After reviewing the preview:
+slack-cli mark 1710000000.000001 --only general --allow-write
+```
+
+`mark` re-scans unread state and marks conversations and followed threads through that timestamp. It never advances beyond it.
+Use `--ignore general` to exclude destinations instead. `--only` and `--ignore` cannot combine.
+A native Slack read position already beyond the boundary can move backward. Per-item failures are reported without stopping other items.
+
+Search accepts Slack modifiers such as `in:general`, `from:me`, and `on:2026-11-13`.
+`--after` and `--before` add Slack's exclusive date filters.
+A query containing `@handle`, `@{Display Name}`, or `<@USERID>` searches mentions of that person.
+Slack resolves search mentions server-side. Prefer a unique handle when names collide.
+
+## Slack Lists
+
+Inspect accessible Lists, filter rows, update a typed cell, or reorder a row.
+A List reference can be its URL, ID, or exact title.
+
+```sh
+slack-cli lists list
+slack-cli lists schema "Demo tracker"
+slack-cli lists rows "Demo tracker" --where Status=Pending
+slack-cli lists update "Demo tracker" --where Task=Docs --column Status --value Done
+slack-cli lists move "Demo tracker" --where Task=Docs --after Task=Build
+```
+
+Updates and moves preview by default and verify the result through readback after an approved write.
+Supported cell types include text, number, date, user, select, and checkbox.
+List access depends on your workspace and permissions.
+
+## Direct API access
+
+Inspect the built-in method catalog before making a direct call:
 
 ```sh
 slack-cli api methods
-slack-cli api describe conversations.history
-slack-cli api users.info --params '{"user":"U123"}' --json
-slack-cli api conversations.history --params '{"channel":"C123","limit":100}' --json
-slack-cli api reactions.add --params '{"channel":"C123","timestamp":"1710000000.000001","name":"white_check_mark"}' --allow-write
-
-# Params may be inline JSON or a file. Arrays and objects are encoded correctly.
-slack-cli api chat.postMessage --params @message.json --allow-write
+slack-cli api describe chat.update
+slack-cli api conversations.replies --params '{"channel":"general","ts":"1710000000.000001"}'
+slack-cli api reactions.add --params '{"channel":"general","timestamp":"1710000000.000001","name":"white_check_mark"}'
 ```
 
-The built-in catalog starts read-only. Catalogued writes preview by default and run only with `--allow-write`. Methods outside the catalog require `--unsafe-method`; they also preview by default because the CLI cannot verify whether they mutate:
+Catalogued writes preview by default. `--params` accepts inline JSON or `@file.json`, with structured values encoded for Slack's form transport.
+Uncatalogued methods require `--unsafe-method` and still preview until `--allow-write` is present.
+Browser credentials do not guarantee access to every Slack endpoint.
+
+## Updates
+
+Existing users can install the latest published release with the same command:
 
 ```sh
-slack-cli api conversations.mark \
-  --params '{"channel":"C123","ts":"1710000000.000001"}' \
-  --allow-write
+slack-cli update --check
+slack-cli update
+slack-cli version
 ```
 
-Check the official [Slack Web API method reference](https://api.slack.com/methods) for current parameters, pagination, and complete behavior. Browser-session credentials may not work with every public Slack API method.
+Updates run only when requested. The CLI selects the matching GitHub release asset and verifies `SHA256SUMS` before replacing its executable.
+Credentials and caches stay in place. A checksum mismatch stops replacement, and downgrades require `--force`.
+On Windows, replacement finishes after the command exits. Confirm the result with `slack-cli version`.
+Checksums detect corruption but do not independently verify publisher identity.
 
-### References, mentions, and write previews
+See [release maintenance](docs/maintenance.md) for the maintainer workflow. Unpublished source changes reach installed users only after a new release.
 
-Commands that take a channel accept an ID, a bare visible channel name, or `#name`.
-Known direct API methods resolve their `channel` parameter the same way. Use `users find
-"Seth Foss"` to inspect available identities. In `send` text, `@{Seth Foss}` resolves to a
-real Slack mention; the command refuses ambiguous or missing matches rather than guessing.
+## Command reference
 
-Every write path resolves references and prints the normalized parameters plus the form-encoded
-wire representation by default, but never calls the write endpoint until `--allow-write` is present.
+Run `slack-cli --help` for command syntax and common flags.
+See the [full reference](docs/commands.md) for read, write, profile, and List options.
 
-## Build from Source
+## Build and contribute
 
 Requires [Bun](https://bun.com).
 
 ```sh
-git clone https://github.com/LegoGuy32109/agentic-slack-cli
-cd agentic-slack-cli
-bun install
-bun run build        # current platform
-bun run build:linux  # Linux x64
-bun run build:mac    # Mac arm64
-bun run build:win    # Windows x64
+bun install --frozen-lockfile
+bun run typecheck
+bun test
+bun run build
+./slack-cli --help
 ```
+
+Tests use fake credentials and services. Keep tokens, copied requests, browser profiles, and private workspace data out of issues and commits.
