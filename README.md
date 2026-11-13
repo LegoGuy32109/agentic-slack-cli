@@ -5,6 +5,7 @@
 </p>
 
 <p align="center">
+  <a href="#suggested-agent-instructions">Try it with your agent</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#rich-messages">Rich messages</a> ·
   <a href="#files-and-threads">Files and threads</a> ·
@@ -25,6 +26,25 @@ the request.
   width="626">
   <br><sub>Sent from the CLI using Block Styling</sub>
 </p>
+
+## Suggested agent instructions
+
+After installing and signing in, try prompts like these with your coding agent:
+
+> Use `slack-cli` to help me respond to the question in #engineering.
+
+> Summarize what I missed last week with `slack-cli`.
+
+> Draft a DM with `slack-cli` to Randy about the product launch. Search
+> #product for context.
+
+> Use `slack-cli` to draft a release update with status fields and a checklist
+> from the discussion in #engineering.
+
+> Use `slack-cli` to attach report.pdf to the release thread. Show me the file
+> and destination before uploading.
+
+Review the draft before letting your agent add `--allow-write` to send it.
 
 ```sh
 slack-cli history general --top=10
@@ -92,10 +112,24 @@ Set `SLACK_CLI_BIN` to choose another folder for the macOS/Linux installer.
 
 ## Quick start
 
-1. Open your Slack workspace in a browser, then open DevTools.
-2. In **Network**, filter requests by `api/`.
-3. Right-click a Slack API request and select **Copy as cURL**.
-4. Run `slack-cli auth --profile demo`, paste the request, and press Ctrl+D.
+Open your Slack workspace in a browser, then open DevTools. Follow the numbers
+in the screenshot:
+
+1. Select **Network**.
+2. Filter requests by `api/`.
+3. Right-click a Slack API request.
+4. Open the **Copy** submenu.
+5. Select **Copy as cURL**.
+
+<p align="center">
+  <img src="docs/images/auth-copy-curl.png"
+  alt="Numbered steps in DevTools for copying a Slack API request as cURL."
+  width="925">
+  <br><sub>Copy the request, then paste it into the local auth command</sub>
+</p>
+
+Run the authentication command below, paste the copied request, and press
+Ctrl+D to finish. Keep the copied request out of chats, issues, and screenshots.
 
 ```sh
 slack-cli auth --profile demo
@@ -253,13 +287,7 @@ slack-cli unread --content --json
 `unread` includes channels, group DMs, DMs, followed threads, and file links.
 Add `--all` to include muted conversations. Reading does not mark messages read.
 
-Suggested agent instruction:
-
-> Use `slack-cli` to read recent context before drafting a Slack message.
-> Preview every write and show me the content and destination.
-> Use `--json` where supported.
-> Only add `--allow-write` after I approve the operation.
-> If delivery is uncertain, inspect history before trying again.
+### Unreads
 
 Use the `request_ts` from an unread scan as an explicit read boundary:
 
