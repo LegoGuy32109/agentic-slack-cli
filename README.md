@@ -29,20 +29,40 @@ the request.
 
 ## Suggested agent instructions
 
-After installing and signing in, try prompts like these with your coding agent:
+Copy a prompt into your coding agent after installing and signing in.
 
-> Use `slack-cli` to help me respond to the question in #engineering.
-
-> Summarize what I missed last week with `slack-cli`.
-
-> Draft a DM with `slack-cli` to Randy about the product launch. Search
-> #product for context.
-
-> Use `slack-cli` to draft a release update with status fields and a checklist
-> from the discussion in #engineering.
-
-> Use `slack-cli` to attach report.pdf to the release thread. Show me the file
-> and destination before uploading.
+<table>
+<tr>
+<td width="50%" valign="top">
+<h3>💬 Answer a question</h3>
+<p>Use <code>slack-cli</code> to help me respond to the question in
+<code>#engineering</code>.</p>
+</td>
+<td width="50%" valign="top">
+<h3>🗓️ Catch up</h3>
+<p>Summarize what I missed last week with <code>slack-cli</code>.</p>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<h3>✉️ Draft a DM</h3>
+<p>Draft a DM with <code>slack-cli</code> to Randy about the product launch.
+Search <code>#product</code> for context.</p>
+</td>
+<td width="50%" valign="top">
+<h3>🚀 Write a release update</h3>
+<p>Use <code>slack-cli</code> to draft a release update with status fields and
+a checklist from the discussion in <code>#engineering</code>.</p>
+</td>
+</tr>
+<tr>
+<td colspan="2">
+<h3>📎 Share a report</h3>
+<p>Use <code>slack-cli</code> to attach <code>report.pdf</code> to the release
+thread. Show me the file and destination before uploading.</p>
+</td>
+</tr>
+</table>
 
 Review the draft before letting your agent add `--allow-write` to send it.
 
