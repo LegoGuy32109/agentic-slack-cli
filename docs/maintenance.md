@@ -24,16 +24,19 @@ bun run release major
 ```
 
 The script validates committed HEAD in a temporary worktree, updates the version files, creates a release commit and tag, and pushes atomically.
-It excludes other uncommitted changes. The tag triggers four binary builds and publication of `SHA256SUMS` through GitHub Actions.
+It excludes other uncommitted changes. The tag triggers three binary builds and publication of `SHA256SUMS` through GitHub Actions.
 The next version must exceed the installed version for ordinary `slack-cli update` to offer it.
 
 Preserve these asset names because existing installers and updaters depend on them:
 
 - `slack-cli-linux-x64`
 - `slack-cli-mac-arm64`
-- `slack-cli-mac-x64`
 - `slack-cli-windows-x64.exe`
 - `SHA256SUMS`
 
 After publication, check the release assets and run `slack-cli update --check` from an older installed binary.
 Verify a real update on a disposable copy before treating the release as delivered.
+
+Builds cross-compile on Linux to avoid macOS runner queues. To finish an existing
+release tag, dispatch the Release workflow with its `tag` input. The workflow
+checks out that tag without moving it.

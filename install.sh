@@ -19,7 +19,7 @@ case "$OS" in
   Darwin)
     case "$ARCH" in
       arm64) TARGET="slack-cli-mac-arm64" ;;
-      x86_64) TARGET="slack-cli-mac-x64" ;;
+      x86_64) echo "Intel macOS release binaries are no longer supplied. Build from source instead."; exit 1 ;;
       *) echo "Unsupported arch: $ARCH" && exit 1 ;;
     esac
     ;;

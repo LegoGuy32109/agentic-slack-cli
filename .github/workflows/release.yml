@@ -4,6 +4,15 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   build:
@@ -16,21 +25,20 @@ jobs:
             os: ubuntu-latest
             artifact: slack-cli-linux-x64
           - target: bun-darwin-arm64
-            os: macos-latest
+            os: ubuntu-latest
             artifact: slack-cli-mac-arm64
-          - target: bun-darwin-x64
-            os: macos-latest
-            artifact: slack-cli-mac-x64
           - target: bun-windows-x64
             os: ubuntu-latest
             artifact: slack-cli-windows-x64.exe
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: '1.4.4'
 
       - run: bun install
 
@@ -57,5 +65,6 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           files: artifacts/*
           generate_release_notes: true

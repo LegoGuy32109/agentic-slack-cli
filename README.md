@@ -124,14 +124,15 @@ Release binaries run without Bun or Node.js. You can also download one from
 | --- | --- |
 | Linux x64 | `slack-cli-linux-x64` |
 | macOS Apple silicon | `slack-cli-mac-arm64` |
-| macOS Intel | `slack-cli-mac-x64` |
 | Windows x64 | `slack-cli-windows-x64.exe` |
 
 For manual installation, download the executable and `SHA256SUMS` from the same
 release and verify the checksum. On Windows, rename it to `slack-cli.exe` and
 place it in a folder on your PATH.
 
-There are no native Linux ARM64 or Windows ARM64 builds. On Windows ARM64,
+Prebuilt binaries support Linux x64, Apple silicon macOS, and Windows x64.
+Intel Mac users can build from source. There are no native Linux ARM64 or
+Windows ARM64 builds. On Windows ARM64,
 the installer uses the x64 build through emulation.
 
 Set `SLACK_CLI_BIN` to choose another folder for the macOS/Linux installer.

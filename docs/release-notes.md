@@ -45,7 +45,8 @@ File receipts may omit `ts` until share metadata becomes available. Use `--verif
 ## Installation and updates
 
 The installer, updater, release asset names, and credential locations remain compatible with existing installations.
-All four binary targets and `SHA256SUMS` must be published together.
+All three binary targets and `SHA256SUMS` must be published together.
+Intel macOS binaries are no longer supplied. Intel Mac users can build from source.
 The major version reflects the command and JSON changes above.
 
 ## Validation

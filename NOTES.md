@@ -8,7 +8,7 @@ temporary task logs. Remove or revise entries once they are no longer true.
 
 ## Release distribution
 
-- Public releases include Linux, macOS ARM/x64, and Windows binaries. The latest GitHub release identifies the current version.
+- Public releases include Linux, Apple silicon macOS, and Windows binaries. The latest GitHub release identifies the current version.
 - A release is created by pushing an annotated `v*` tag; `.github/workflows/release.yml` builds assets and publishes the GitHub Release.
 
 ## CLI behavior implemented
