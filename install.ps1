@@ -15,7 +15,9 @@ New-Item -ItemType Directory -Path $scratch | Out-Null
 try {
   $binary = Join-Path $scratch $name
   Invoke-WebRequest "$base/$name" -OutFile $binary -UseBasicParsing
-  $sums = (Invoke-WebRequest "$base/SHA256SUMS" -UseBasicParsing).Content
+  $sumsPath = Join-Path $scratch 'SHA256SUMS'
+  Invoke-WebRequest "$base/SHA256SUMS" -OutFile $sumsPath -UseBasicParsing
+  $sums = Get-Content -LiteralPath $sumsPath -Raw
   $hashes = @($sums -split '\r?\n' | ForEach-Object {
     if ($_ -match '^([a-fA-F0-9]{64})\s+\*?slack-cli-windows-x64\.exe$') { $Matches[1].ToLowerInvariant() }
   })

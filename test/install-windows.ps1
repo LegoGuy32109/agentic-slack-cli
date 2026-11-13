@@ -26,8 +26,9 @@ function Invoke-RestMethod($Uri) {
 function Invoke-WebRequest($Uri, $OutFile, [switch]$UseBasicParsing) {
   $global:SlackInstallTestRequests += $Uri
   Assert-True ($Uri.StartsWith('https://github.com/LegoGuy32109/agentic-slack-cli/releases/download/v2.0.0/')) 'Download must pin the selected release.'
-  if ($OutFile) {
-    $global:SlackInstallTestDownloadFolders += Split-Path $OutFile
+  Assert-True ([bool]$OutFile) 'Download checksums to a file to avoid response encoding differences.'
+  $global:SlackInstallTestDownloadFolders += Split-Path $OutFile
+  if ($Uri.EndsWith('.exe')) {
     [IO.File]::WriteAllBytes($OutFile, $global:SlackInstallTestBytes)
     return
   }
@@ -37,7 +38,7 @@ function Invoke-WebRequest($Uri, $OutFile, [switch]$UseBasicParsing) {
     'missing' { $line = "$global:SlackInstallTestHash  other.exe" }
     'ambiguous' { $line = $line + "`n" + $line }
   }
-  return [pscustomobject]@{ Content = $line }
+  [IO.File]::WriteAllText($OutFile, $line)
 }
 function Expect-Failure($pattern) {
   $caught = $false
