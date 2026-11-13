@@ -1,0 +1,28 @@
+name: Windows installer
+
+on:
+  push:
+    paths:
+      - install.ps1
+      - test/install-windows.ps1
+      - .github/workflows/install-windows.yml
+  pull_request:
+    paths:
+      - install.ps1
+      - test/install-windows.ps1
+      - .github/workflows/install-windows.yml
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check installer with offline release fixtures
+        shell: pwsh
+        run: ./test/install-windows.ps1
+      - name: Check Windows PowerShell 5.1 compatibility
+        shell: powershell
+        run: ./test/install-windows.ps1

@@ -14,7 +14,7 @@
 </p>
 
 A Slack CLI for coding agents and terminal use. Read conversations, search
-messages, send files, or post structured updates with Block Kit.
+messages, send files, and post formatted updates like the one below.
 
 Commands that change Slack show a preview first. Add `--allow-write` to send
 the request.
@@ -39,21 +39,38 @@ slack-cli send general "Ready for review" --allow-write
 
 ## Install
 
-Download a binary from
-[Releases](https://github.com/LegoGuy32109/agentic-slack-cli/releases/latest),
-or use the installer on macOS and Linux. Release binaries run without Bun or
-Node.js.
+### MacOS & Linux
 
 ```sh
 curl -fsSLO https://raw.githubusercontent.com/LegoGuy32109/agentic-slack-cli/master/install.sh
 sh install.sh
 ```
 
-The installer checks the download against the release's SHA-256 checksum. It
-defaults to `~/.local/bin`. Add that folder to your PATH if needed.
+The installer uses `~/.local/bin`. Add that folder to your PATH if needed.
+
+### Windows PowerShell
+
+Open PowerShell and paste these commands. Administrator access is not required.
+
+```powershell
+Invoke-WebRequest -UseBasicParsing `
+  https://raw.githubusercontent.com/LegoGuy32109/agentic-slack-cli/master/install.ps1 `
+  -OutFile install.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+The installer uses `%LOCALAPPDATA%\slack-cli\bin` and adds it to your user PATH.
+Open a new terminal to start using it.
+
+The execution-policy option applies only to this installer process.
+
+Both installers verify the binary's SHA-256 checksum before installing it.
 
 <details>
 <summary>Platforms and manual installation</summary>
+
+Release binaries run without Bun or Node.js. You can also download one from
+[Releases](https://github.com/LegoGuy32109/agentic-slack-cli/releases/latest).
 
 | Machine | Release asset |
 | --- | --- |
@@ -62,11 +79,14 @@ defaults to `~/.local/bin`. Add that folder to your PATH if needed.
 | macOS Intel | `slack-cli-mac-x64` |
 | Windows x64 | `slack-cli-windows-x64.exe` |
 
-For Windows, download the executable and `SHA256SUMS` from the same release.
-Verify the checksum, rename the executable to `slack-cli.exe`, and place it in a
-folder on your PATH. The shell installer supports macOS and Linux. There are no
-native Linux ARM64 or Windows ARM64 builds. Set `SLACK_CLI_BIN` to choose
-another installation folder.
+For manual installation, download the executable and `SHA256SUMS` from the same
+release and verify the checksum. On Windows, rename it to `slack-cli.exe` and
+place it in a folder on your PATH.
+
+There are no native Linux ARM64 or Windows ARM64 builds. On Windows ARM64,
+the installer uses the x64 build through emulation.
+
+Set `SLACK_CLI_BIN` to choose another folder for the macOS/Linux installer.
 
 </details>
 
@@ -112,8 +132,15 @@ slack-cli send general 'Review checklist:
 - Desktop review pending' --format=rich
 ```
 
-For headings, status fields, or code blocks, use `--blocks` with a text
-fallback:
+To combine headings, status fields, and code blocks in one message, use
+`--blocks`. Slack calls these layouts
+[Block Kit](https://docs.slack.dev/block-kit/).
+A JSON file defines the layout, and Slack renders it as a message. Your agent
+can write that file or adapt one of the examples here, then send it through
+the CLI using your browser session.
+
+Pass the file with `--blocks @file.json` and include a text fallback for
+notifications:
 
 ```sh
 slack-cli send general "Demo release: checks passed, desktop review pending." \
